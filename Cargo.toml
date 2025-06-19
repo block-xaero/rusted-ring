@@ -1,0 +1,14 @@
+[package]
+name = "rusted-ring"
+version = "0.1.0"
+edition = "2024"
+description = "Lock-free ring buffers with cache-aligned memory pools for high-performance event systems"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/blockxaero/rusted-ring"
+keywords = ["ringbuffer", "lockfree", "memory-pool", "performance", "zero-copy"]
+categories = ["concurrency", "memory-management", "data-structures"]
+
+[lib]
+
+[dependencies]
+bytemuck = "1.23.1"
