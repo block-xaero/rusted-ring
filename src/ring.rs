@@ -2,11 +2,9 @@ use std::{
     cell::UnsafeCell,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicUsize, AtomicU16, AtomicU8, Ordering},
     },
 };
-
-#[allow(dead_code)]
 use bytemuck::{Pod, Zeroable};
 
 /// T-shirt sizing of events
@@ -31,12 +29,30 @@ pub struct PooledEvent<const TSHIRT_SIZE: usize> {
 unsafe impl<const TSHIRT_SIZE: usize> Pod for PooledEvent<TSHIRT_SIZE> {}
 unsafe impl<const TSHIRT_SIZE: usize> Zeroable for PooledEvent<TSHIRT_SIZE> {}
 
+#[repr(C, align(64))]
+pub struct SlotMetadata {
+    pub ref_count: AtomicU8,
+    pub generation: AtomicU16,
+    pub is_allocated: AtomicU8,  // 0 = free, 1 = allocated
+}
+
+impl Default for SlotMetadata {
+    fn default() -> Self {
+        Self {
+            ref_count: AtomicU8::new(0),
+            generation: AtomicU16::new(0),
+            is_allocated: AtomicU8::new(0),
+        }
+    }
+}
+
 // Stack safety guards - prevent unreasonable memory usage
 const MAX_STACK_BYTES: usize = 1_048_576; // 1MB max per ring buffer
 
 #[repr(C, align(64))]
 pub struct RingBuffer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     pub(crate) data: UnsafeCell<[PooledEvent<TSHIRT_SIZE>; RING_CAPACITY]>,
+    pub(crate) metadata: UnsafeCell<[SlotMetadata; RING_CAPACITY]>,
     pub write_cursor: AtomicUsize,
 }
 
@@ -67,6 +83,12 @@ unsafe impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Send for RingB
 {
 }
 
+impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Default for RingBuffer<TSHIRT_SIZE, RING_CAPACITY> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZE, RING_CAPACITY> {
     pub fn new() -> Self {
         // Trigger compile-time check
@@ -75,6 +97,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZ
         unsafe {
             Self {
                 data: UnsafeCell::new(std::mem::zeroed()),
+                metadata: UnsafeCell::new(std::mem::zeroed()),
                 write_cursor: AtomicUsize::new(0),
             }
         }

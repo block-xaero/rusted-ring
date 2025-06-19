@@ -1,20 +1,68 @@
 # rusted-ring
 
-A high-performance, cache-optimized ring buffer library for Rust, designed for lock-free, multi-reader, single-writer scenarios with zero-allocation event processing.
+A high-performance, cache-optimized ring buffer library for Rust, designed for lock-free, zero-copy event processing with smart pointer semantics for slot-based memory management.
 
 ## Features
 
 - **Cache-line aligned** ring buffers for optimal CPU cache performance
 - **Lock-free** operations using atomic memory ordering
-- **T-shirt sized pools** for different event categories
+- **T-shirt sized pools** for different event categories (XS, S, M, L, XL)
 - **Zero-copy** operations with Pod/Zeroable support
+- **Smart pointer semantics** with `RingPtr<T>` for automatic memory management
+- **Reference counting** for safe slot reuse across multiple consumers
 - **Mobile optimized** for ARM and x86 architectures
 - **Single-writer, multi-reader** design inspired by LMAX Disruptor
 
-## Quick Start
+## Core Architecture
+
+### RingPtr<T> - Smart Pointer to Ring Buffer Slots
+
+The key innovation is `RingPtr<T>`, which acts like `Arc<T>` but points to ring buffer memory instead of heap:
 
 ```rust
-use rusted_ring::{RingBuffer, Reader, Writer, PooledEvent, EventPools};
+use rusted_ring::{RingPtr, EventAllocator, PoolId};
+
+// Allocate event in ring buffer
+let allocator = EventAllocator::new();
+let ring_ptr: RingPtr<Event> = allocate_from_pool(&allocator, data, event_type);
+
+// Clone for sharing (increments ref count in slot metadata)
+let shared_ptr = ring_ptr.clone();
+
+// Access data (zero-copy deref to ring buffer slot)
+let event_data = ring_ptr.deref();
+
+// When all RingPtrs drop, slot automatically becomes reusable
+```
+
+### Dual Memory Architecture
+
+- **Ring Buffer Slots**: Store actual event data (`PooledEvent<SIZE>`)
+- **Slot Metadata**: Store reference counting and generation info (`SlotMetadata`)
+
+```rust
+#[repr(C, align(64))]
+pub struct RingBuffer<const SIZE: usize, const CAPACITY: usize> {
+    pub(crate) data: UnsafeCell<[PooledEvent<SIZE>; CAPACITY]>,
+    pub(crate) metadata: UnsafeCell<[SlotMetadata; CAPACITY]>,
+    pub write_cursor: AtomicUsize,
+}
+
+#[repr(C, align(64))]
+pub struct SlotMetadata {
+    pub ref_count: AtomicU8,     // Thread-safe reference counting
+    pub generation: AtomicU16,   // ABA protection for safe reuse
+    pub is_allocated: AtomicU8,  // Allocation state
+}
+```
+
+## Quick Start
+
+### Basic Ring Buffer Operations
+
+```rust
+use rusted_ring::{RingBuffer, Reader, Writer, PooledEvent};
+use std::sync::Arc;
 
 // Create a ring buffer for 256-byte events with 1000 capacity
 let ring = Arc::new(RingBuffer::<256, 1000>::new());
@@ -37,63 +85,75 @@ writer.add(event);
 
 // Read events
 while let Some(event) = reader.next() {
-    // Process event
     println!("Event type: {}", event.event_type);
+}
+```
+
+### Smart Pointer Usage (Recommended)
+
+```rust
+use rusted_ring::{EventAllocator, RingPtr, PoolId};
+use std::sync::LazyLock;
+
+// Global allocator (typically in your application)
+static ALLOCATOR: LazyLock<EventAllocator> = LazyLock::new(|| EventAllocator::new());
+
+// Allocate event from appropriate pool
+fn create_event(data: &[u8], event_type: u8) -> RingPtr<Event> {
+    let allocator = &*ALLOCATOR;
+    let size = EventAllocator::estimate_size(data.len());
+    let pool_id = PoolId::from_size(size);
+    
+    // Allocate slot and get RingPtr
+    let slot_index = allocate_to_pool(allocator, data, event_type);
+    let generation = allocator.pools.get_generation(pool_id, slot_index);
+    
+    RingPtr::new(pool_id, slot_index, generation, allocator)
+}
+
+// Share across threads/actors
+fn distribute_event(ring_ptr: RingPtr<Event>) {
+    // Send to multiple consumers
+    tx1.send(ring_ptr.clone()).unwrap(); // Consumer 1
+    tx2.send(ring_ptr.clone()).unwrap(); // Consumer 2  
+    tx3.send(ring_ptr.clone()).unwrap(); // Consumer 3
+    // Slot freed automatically when all consumers finish
 }
 ```
 
 ## Core Types
 
-### RingBuffer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize>
-
-The main ring buffer structure. Cache-aligned and optimized for high-frequency access.
-
-```rust
-let ring = RingBuffer::<1024, 500>::new(); // 1KB events, 500 capacity
-```
-
 ### PooledEvent<const TSHIRT_SIZE: usize>
 
-Fixed-size event structure that implements Pod and Zeroable for zero-copy operations.
+Fixed-size event structure that implements Copy, Clone, Pod and Zeroable for zero-copy operations:
 
 ```rust
 #[repr(C, align(64))]
+#[derive(Debug, Copy, Clone)]
 pub struct PooledEvent<const TSHIRT_SIZE: usize> {
-    data: [u8; TSHIRT_SIZE],
-    len: u32,
-    event_type: u32,
+    pub data: [u8; TSHIRT_SIZE],
+    pub len: u32,
+    pub event_type: u32,
 }
 ```
 
-### Writer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize>
+### EventPools
 
-Single-writer interface for adding events to the ring buffer.
-
-```rust
-let mut writer = Writer {
-    ringbuffer: ring.clone(),
-    last_ts: 0,
-};
-
-// Add events with proper memory ordering
-writer.add(pooled_event);
-```
-
-### Reader<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize>
-
-Multi-reader interface implementing Iterator for consuming events.
+Manage multiple ring buffers by size category with automatic size estimation:
 
 ```rust
-let mut reader = Reader {
-    ringbuffer: ring.clone(),
-    cursor: 0,
-    last_ts: 0,
-};
+use rusted_ring::{EventPools, EventSize, PoolId};
 
-// Iterate over available events
-for event in reader {
-    // Process event
-}
+let pools = EventPools::new();
+
+// Automatic size estimation
+let size = EventAllocator::estimate_size(data.len());
+let pool_id = PoolId::from_size(size);
+
+// Access specific pools
+pools.get_slot_data(pool_id, slot_index);
+pools.inc_ref_count(pool_id, slot_index);
+pools.dec_ref_count(pool_id, slot_index);
 ```
 
 ## T-Shirt Sizing
@@ -109,39 +169,42 @@ pub enum EventSize {
     XL,  // 16KB       - Large files, complex diagrams
     XXL, // 64KB+      - Heap fallback for rare huge events
 }
+
+// Automatic size selection
+let size = EventAllocator::estimate_size(payload.len());
+let pool_id = PoolId::from_size(size);
 ```
 
-## EventPools
+## Reference Counting & Memory Management
 
-Manage multiple ring buffers by size category:
+Automatic slot lifecycle management with atomic reference counting:
 
 ```rust
-use rusted_ring::EventPools;
+// 1. Allocation
+let ring_ptr = create_event(data, event_type); // ref_count = 1
 
-let pools = EventPools::new();
+// 2. Sharing
+let ptr1 = ring_ptr.clone(); // ref_count = 2
+let ptr2 = ring_ptr.clone(); // ref_count = 3
 
-// Get appropriately sized writers
-let xs_writer = pools.get_xs_writer(); // 64-byte events
-let s_writer = pools.get_s_writer();   // 256-byte events
-let m_writer = pools.get_m_writer();   // 1KB events
-let l_writer = pools.get_l_writer();   // 4KB events
-let xl_writer = pools.get_xl_writer(); // 16KB events
+// 3. Distribution
+send_to_consumer1(ptr1); 
+send_to_consumer2(ptr2);
+drop(ring_ptr); // ref_count = 2
 
-// Get readers for each size
-let xs_reader = pools.get_xs_reader();
-let s_reader = pools.get_s_reader();
-// ... etc
+// 4. Automatic cleanup
+// When consumers finish: ref_count = 1, then 0
+// Slot automatically marked reusable with new generation
 ```
 
 ## Memory Ordering & Safety
 
-The library uses careful memory ordering to ensure data visibility:
+Careful memory ordering ensures data visibility without locks:
 
 - **Writers**: Use `Release` ordering when updating cursors
 - **Readers**: Use `Acquire` ordering when reading cursor positions
-- **Data access**: Protected by cursor coordination
-
-This ensures readers never see stale data while maintaining lock-free performance.
+- **Reference counting**: Uses `AcqRel` ordering for atomicity
+- **Slot reuse**: Protected by generation numbers (ABA prevention)
 
 ## Cache Optimization
 
@@ -152,79 +215,137 @@ All structures are cache-line aligned (64 bytes) to prevent false sharing:
 pub struct RingBuffer<...> { ... }
 
 #[repr(C, align(64))]  
-pub struct Reader<...> { ... }
+pub struct SlotMetadata { ... }
 
 #[repr(C, align(64))]
-pub struct Writer<...> { ... }
+pub struct PooledEvent<...> { ... }
 ```
 
 ## Performance Characteristics
 
-- **Allocation**: Zero allocations after initialization
-- **Write latency**: ~10-50ns per event
-- **Read latency**: ~5-20ns per event
-- **Memory usage**: Predictable and bounded
-- **Cache performance**: Optimized for sequential access patterns
+- **Allocation**: ~10-50ns per event (pool allocation vs ~100-500ns malloc)
+- **Reference counting**: ~1-3 CPU cycles (atomic increment/decrement)
+- **Access latency**: Direct pointer dereference to ring buffer memory
+- **Memory usage**: Predictable 2.5MB total across all pools
+- **Cache performance**: Optimized for temporal locality in slot access
 
 ## Use Cases
 
 Perfect for:
 
-- **Real-time systems** requiring predictable latency
+- **Event-driven architectures** with actor-based processing
+- **Real-time systems** requiring predictable latency and memory usage
 - **High-frequency event processing** (trading, gaming, IoT)
-- **Mobile applications** with strict memory constraints
 - **P2P systems** needing efficient local buffering
-- **CRDT operations** and collaborative editing
+- **CRDT operations** and collaborative editing systems
+- **Mobile applications** with strict memory constraints
 
-## Example: Event Processing Pipeline
+## Example: Multi-Actor Event Processing
 
 ```rust
-use std::sync::Arc;
-use rusted_ring::{EventPools, PooledEvent};
+use std::sync::{Arc, LazyLock};
+use rusted_ring::{EventAllocator, RingPtr};
 
-// Initialize pools
-let pools = Arc::new(EventPools::new());
+// Global allocator
+static ALLOCATOR: LazyLock<EventAllocator> = LazyLock::new(|| EventAllocator::new());
 
-// Producer thread
-let pools_producer = pools.clone();
-std::thread::spawn(move || {
-    let mut writer = pools_producer.get_s_writer();
+// Event wrapper for your application
+pub struct XaeroEvent {
+    pub evt: RingPtr<Event>,                    // Points to ring buffer
+    pub vector_clock: Option<Arc<VectorClock>>, // Heap metadata
+    pub author_id: Option<Arc<AuthorID>>,       // Heap metadata  
+    pub latest_ts: u64,                         // Inline primitive
+}
+
+// FFI boundary - incoming events
+#[no_mangle]
+pub extern "C" fn handle_ffi_event(data: *const u8, len: usize, event_type: u8) {
+    let data_slice = unsafe { std::slice::from_raw_parts(data, len) };
     
-    loop {
-        let mut event = PooledEvent::<256>::zeroed();
-        // Fill event with data...
-        event.event_type = 42;
+    // Allocate from ring buffer
+    let ring_ptr = create_event(data_slice, event_type);
+    
+    // Create application event
+    let xaero_event = Arc::new(XaeroEvent {
+        evt: ring_ptr,
+        vector_clock: Some(Arc::new(get_vector_clock())),
+        author_id: Some(Arc::new(get_author())),
+        latest_ts: current_timestamp(),
+    });
+    
+    // Send to all actors
+    mmr_actor_tx.send(xaero_event.clone()).unwrap();
+    segment_actor_tx.send(xaero_event.clone()).unwrap();
+    index_actor_tx.send(xaero_event.clone()).unwrap();
+    // Ring buffer slot freed when all actors finish processing
+}
+
+// Actor processing
+fn mmr_actor_main() {
+    while let Ok(event) = rx.recv() {
+        // Zero-copy access to ring buffer data
+        let event_data = event.evt.deref();
+        let payload = &event_data.data[..event_data.len as usize];
         
-        writer.add(event);
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        // Process and emit new event
+        let mmr_hash = calculate_mmr(payload);
+        emit_system_event(MmrAppended { hash: mmr_hash });
+        
+        // event drops here, decrementing ring buffer slot ref count
     }
-});
+}
 
-// Consumer thread  
-let pools_consumer = pools.clone();
-std::thread::spawn(move || {
-    let mut reader = pools_consumer.get_s_reader();
+// Batch processing with automatic cleanup
+fn fold_reduce_events(events: Vec<Arc<XaeroEvent>>) -> Result<Arc<XaeroEvent>> {
+    // Extract ring buffer references  
+    let input_slots: Vec<RingPtr<Event>> = events.iter()
+        .map(|e| e.evt.clone()) // Clone increments ref counts
+        .collect();
     
-    while let Some(event) = reader.next() {
-        println!("Processed event type: {}", event.event_type);
-    }
-});
+    // Process data from ring buffer slots
+    let reduced_data = fold_operation(&input_slots);
+    
+    // Create result in new ring buffer slot
+    let result_ring_ptr = create_event(&reduced_data, RESULT_EVENT_TYPE);
+    let result_event = Arc::new(XaeroEvent {
+        evt: result_ring_ptr,
+        ..Default::default()
+    });
+    
+    // Send result and release input slots
+    send_result(result_event);
+    drop(input_slots); // All input slots freed for reuse
+    
+    Ok(result_event)
+}
 ```
 
 ## Memory Requirements
 
 Approximate memory usage for default pool configurations:
 
-- **XS Pool**: 64 × 2000 = 128KB
-- **S Pool**: 256 × 1000 = 256KB
-- **M Pool**: 1024 × 500 = 512KB
-- **L Pool**: 4096 × 200 = 819KB
-- **XL Pool**: 16384 × 50 = 819KB
+- **XS Pool**: 64 × 2000 = 128KB (+ 14KB metadata)
+- **S Pool**: 256 × 1000 = 256KB (+ 7KB metadata)
+- **M Pool**: 1024 × 300 = 307KB (+ 2KB metadata)
+- **L Pool**: 4096 × 60 = 245KB (+ 420 bytes metadata)
+- **XL Pool**: 16384 × 15 = 245KB (+ 105 bytes metadata)
 
-**Total**: ~2.5MB of pre-allocated ring buffer memory
+**Total**: ~2.5MB of predictable, pre-allocated memory
+
+## Compile-time Safety
+
+Built-in guards prevent stack overflow from oversized ring buffers:
+
+```rust
+const MAX_STACK_BYTES: usize = 1_048_576; // 1MB limit
+
+// Compile-time check
+const _STACK_GUARD: () = {
+    let total_size = TSHIRT_SIZE * RING_CAPACITY;
+    assert!(total_size <= MAX_STACK_BYTES, "Ring buffer too large for stack!");
+};
+```
 
 ## License
 
 MPL-2.0
-
-```

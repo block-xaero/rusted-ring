@@ -8,7 +8,13 @@ use crate::{
 };
 
 pub struct EventAllocator {
-    pools: Arc<EventPools>,
+    pub pools: Arc<EventPools>,
+}
+
+impl Default for EventAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EventAllocator {
