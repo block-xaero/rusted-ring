@@ -1,7 +1,7 @@
 #[allow(dead_code)]
-mod allocator;
-mod pool;
-mod ring;
+pub mod allocator;
+pub mod pool;
+pub mod ring;
 
 #[cfg(test)]
 mod tests {
