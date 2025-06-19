@@ -1,5 +1,6 @@
 use crate::{allocator::EventAllocator, pool::PoolId};
-use std::{marker::PhantomData, ops::Deref};
+use std::{fmt, marker::PhantomData, ops::Deref};
+use std::fmt::Debug;
 
 pub struct RingPtr<T> {
     pub pool_id: PoolId,
@@ -25,6 +26,16 @@ impl<T> RingPtr<T> {
             allocator,
             _phantom: PhantomData,
         }
+    }
+}
+
+impl<T> fmt::Debug for RingPtr<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RingPtr")
+            .field("pool_id", &self.pool_id)
+            .field("slot_index", &self.slot_index)
+            .field("generation", &self.generation)
+            .finish()
     }
 }
 

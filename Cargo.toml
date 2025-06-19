@@ -1,6 +1,6 @@
 [package]
 name = "rusted-ring"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Lock-free ring buffers with cache-aligned memory pools for high-performance event systems"
 license = "MPL-2.0"
@@ -12,3 +12,4 @@ categories = ["concurrency", "memory-management", "data-structures"]
 
 [dependencies]
 bytemuck = "1.23.1"
+thiserror = "2.0.12"
