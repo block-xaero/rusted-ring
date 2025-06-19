@@ -5,12 +5,15 @@ mod ring;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::allocator::EventAllocator;
-    use crate::ring::{EventSize, PooledEvent, Reader, RingBuffer, Writer};
+    use std::{sync::Arc, thread};
+
     use bytemuck::Zeroable;
-    use std::sync::Arc;
-    use std::thread;
+
+    use super::*;
+    use crate::{
+        allocator::EventAllocator,
+        ring::{EventSize, PooledEvent, Reader, RingBuffer, Writer},
+    };
 
     // Test-specific smaller pools to avoid stack overflow
     struct TestEventAllocator {
@@ -78,8 +81,7 @@ mod tests {
         let mut reader = allocator.get_xs_reader();
 
         // Create test event
-        let test_event = EventAllocator::create_pooled_event::<64>(b"test event", 1)
-            .expect("Failed to create event");
+        let test_event = EventAllocator::create_pooled_event::<64>(b"test event", 1).expect("Failed to create event");
 
         // Write event
         assert!(writer.add(test_event));
@@ -100,14 +102,14 @@ mod tests {
         // Fill the entire ring buffer (test XS has 100 capacity)
         for i in 0..100 {
             let data = format!("event_{}", i);
-            let event = EventAllocator::create_pooled_event::<64>(data.as_bytes(), i as u32)
-                .expect("Failed to create event");
+            let event =
+                EventAllocator::create_pooled_event::<64>(data.as_bytes(), i as u32).expect("Failed to create event");
             assert!(writer.add(event));
         }
 
         // Add one more to test wraparound
-        let wrap_event = EventAllocator::create_pooled_event::<64>(b"wraparound", 9999)
-            .expect("Failed to create event");
+        let wrap_event =
+            EventAllocator::create_pooled_event::<64>(b"wraparound", 9999).expect("Failed to create event");
         assert!(writer.add(wrap_event));
 
         // Read some events to make space
@@ -116,8 +118,8 @@ mod tests {
         }
 
         // Should be able to add more after reading
-        let another_event = EventAllocator::create_pooled_event::<64>(b"after_wrap", 10000)
-            .expect("Failed to create event");
+        let another_event =
+            EventAllocator::create_pooled_event::<64>(b"after_wrap", 10000).expect("Failed to create event");
         assert!(writer.add(another_event));
     }
 
@@ -172,8 +174,7 @@ mod tests {
         for i in 0..50 {
             // Reduced from 100 for smaller test pool
             let data = format!("event_{}", i);
-            let event = EventAllocator::create_pooled_event::<64>(data.as_bytes(), i)
-                .expect("Failed to create event");
+            let event = EventAllocator::create_pooled_event::<64>(data.as_bytes(), i).expect("Failed to create event");
             writer.add(event);
         }
 
@@ -203,11 +204,7 @@ mod tests {
         // Wait for all readers
         for handle in handles {
             let (reader_id, count) = handle.join().unwrap();
-            assert!(
-                count > 0,
-                "Reader {} should have read some events",
-                reader_id
-            );
+            assert!(count > 0, "Reader {} should have read some events", reader_id);
         }
     }
 
@@ -218,10 +215,7 @@ mod tests {
         let mut reader = allocator.get_xs_reader();
 
         // Try to read from empty buffer
-        assert!(
-            reader.next().is_none(),
-            "Should not be able to read ahead of writer"
-        );
+        assert!(reader.next().is_none(), "Should not be able to read ahead of writer");
 
         // Write one event
         let mut writer = writer;
@@ -232,10 +226,7 @@ mod tests {
         assert!(reader.next().is_some());
 
         // Should not be able to read another
-        assert!(
-            reader.next().is_none(),
-            "Should not be able to read ahead of writer"
-        );
+        assert!(reader.next().is_none(), "Should not be able to read ahead of writer");
     }
 
     #[test]

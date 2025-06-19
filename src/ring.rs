@@ -1,8 +1,13 @@
+use std::{
+    cell::UnsafeCell,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
 #[allow(dead_code)]
 use bytemuck::{Pod, Zeroable};
-use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 
 /// T-shirt sizing of events
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +21,7 @@ pub enum EventSize {
 }
 
 #[repr(C, align(64))]
-#[derive(Debug,Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct PooledEvent<const TSHIRT_SIZE: usize> {
     pub data: [u8; TSHIRT_SIZE],
     pub len: u32,
@@ -52,17 +57,15 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZ
 // 3. Readers never write to the data, only read
 // 4. Writers coordinate among themselves (single-writer pattern intended)
 // 5. The UnsafeCell is only used for interior mutability, not for bypassing thread safety
-unsafe impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Sync
-for RingBuffer<TSHIRT_SIZE, RING_CAPACITY>
-where
+unsafe impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Sync for RingBuffer<TSHIRT_SIZE, RING_CAPACITY> where
     PooledEvent<TSHIRT_SIZE>: Send + Sync
-{}
+{
+}
 
-unsafe impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Send
-for RingBuffer<TSHIRT_SIZE, RING_CAPACITY>
-where
+unsafe impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Send for RingBuffer<TSHIRT_SIZE, RING_CAPACITY> where
     PooledEvent<TSHIRT_SIZE>: Send + Sync
-{}
+{
+}
 
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZE, RING_CAPACITY> {
     pub fn new() -> Self {
@@ -85,9 +88,7 @@ pub struct Reader<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     pub last_ts: u64,
 }
 
-impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Iterator
-for Reader<TSHIRT_SIZE, RING_CAPACITY>
-{
+impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Iterator for Reader<TSHIRT_SIZE, RING_CAPACITY> {
     type Item = PooledEvent<TSHIRT_SIZE>;
 
     fn next(&mut self) -> Option<Self::Item> {

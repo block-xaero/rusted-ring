@@ -1,7 +1,11 @@
-use crate::pool::EventPools;
-use crate::ring::{EventSize, PooledEvent, Reader, RingBuffer, Writer};
-use bytemuck::Zeroable;
 use std::sync::Arc;
+
+use bytemuck::Zeroable;
+
+use crate::{
+    pool::EventPools,
+    ring::{EventSize, PooledEvent, Reader, RingBuffer, Writer},
+};
 
 pub struct EventAllocator {
     pools: Arc<EventPools>,
@@ -64,6 +68,7 @@ impl EventAllocator {
             last_ts: 0,
         }
     }
+
     pub fn get_s_reader(&self) -> Reader<256, 1000> {
         Reader {
             ringbuffer: self.pools.s_pool.clone(),

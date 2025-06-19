@@ -1,12 +1,13 @@
-use crate::ring::RingBuffer;
 use std::sync::Arc;
 
+use crate::ring::RingBuffer;
+
 // Pool size constants - Adjusted to stay under 1MB per ring buffer
-pub const XS_CAPACITY: usize = 2000;  // 64 * 2000 = 128KB ✅
-pub const S_CAPACITY: usize = 1000;   // 256 * 1000 = 256KB ✅
-pub const M_CAPACITY: usize = 300;    // 1024 * 300 = 307KB ✅ (reduced from 500)
-pub const L_CAPACITY: usize = 60;     // 4096 * 60 = 245KB ✅ (reduced from 200)
-pub const XL_CAPACITY: usize = 15;    // 16384 * 15 = 245KB ✅ (reduced from 50)
+pub const XS_CAPACITY: usize = 2000; // 64 * 2000 = 128KB ✅
+pub const S_CAPACITY: usize = 1000; // 256 * 1000 = 256KB ✅
+pub const M_CAPACITY: usize = 300; // 1024 * 300 = 307KB ✅ (reduced from 500)
+pub const L_CAPACITY: usize = 60; // 4096 * 60 = 245KB ✅ (reduced from 200)
+pub const XL_CAPACITY: usize = 15; // 16384 * 15 = 245KB ✅ (reduced from 50)
 
 pub struct EventPools {
     pub xs_pool: Arc<RingBuffer<64, XS_CAPACITY>>,
