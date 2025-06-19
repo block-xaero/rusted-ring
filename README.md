@@ -225,10 +225,6 @@ Approximate memory usage for default pool configurations:
 
 ## License
 
-Licensed under either of
+MPL-2.0
 
-- Apache License, Version 2.0
-- MIT License
-
-at your option.
 ```
