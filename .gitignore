@@ -1,1 +1,77 @@
-/target
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE - IntelliJ IDEA / CLion / RustRover
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# IDE - VSCode (in case you switch)
+.vscode/
+*.code-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# Dependency directories
+node_modules/
+
+# Rust-analyzer cache
+.rust-analyzer/
+
+# Local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Backup files
+*~
+*.swp
+*.swo
+
+# Build artifacts
+/build/
+/dist/
+
+# Documentation build
+/book/
+
+# Benchmark results
+criterion/
+
+# Flamegraph outputs
+flamegraph.svg
+perf.data*
+
+# macOS specific
+.AppleDouble
+.LSOverride
