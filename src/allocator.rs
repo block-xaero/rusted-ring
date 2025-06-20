@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use bytemuck::Zeroable;
 
 use crate::{
@@ -12,17 +13,17 @@ pub struct EventAllocator {
 }
 
 impl EventAllocator {
-        pub fn new() -> Self {
-            Self {
-                pools: Arc::new(EventPools {
-                    xs_pool: Arc::new(RingBuffer::new()),
-                    s_pool: Arc::new(RingBuffer::new()),
-                    m_pool: Arc::new(RingBuffer::new()),
-                    l_pool: Arc::new(RingBuffer::new()),
-                    xl_pool: Arc::new(RingBuffer::new()),
-                }),
-            }
+    pub fn new() -> Self {
+        Self {
+            pools: Arc::new(EventPools {
+                xs_pool: Arc::new(RingBuffer::new()),
+                s_pool: Arc::new(RingBuffer::new()),
+                m_pool: Arc::new(RingBuffer::new()),
+                l_pool: Arc::new(RingBuffer::new()),
+                xl_pool: Arc::new(RingBuffer::new()),
+            }),
         }
+    }
 
     // Get writers for each size (for LMAX-style sequential writing if needed)
     pub fn get_xs_writer(&self) -> Writer<64, 2000> {
@@ -152,17 +153,14 @@ impl EventAllocator {
     }
 
     /// Allocate event to ring buffer slot and return RingPtr - separate methods for each size
-    pub fn allocate_xs_event(
-        &self,
-        data: &[u8],
-        event_type: u32,
-    ) -> Result<RingPtr<PooledEvent<64>>, AllocationError> {
+    pub fn allocate_xs_event(&self, data: &[u8], event_type: u32) -> Result<RingPtr<PooledEvent<64>>, AllocationError> {
         // 1. Create the pooled event
-        let pooled_event = Self::create_pooled_event::<64>(data, event_type)
-            .map_err(|e| AllocationError::EventCreation(e))?;
+        let pooled_event =
+            Self::create_pooled_event::<64>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
 
         // 2. Find available slot
-        let slot_index = self.find_available_slot(PoolId::XS)
+        let slot_index = self
+            .find_available_slot(PoolId::XS)
             .ok_or(AllocationError::PoolFull(PoolId::XS))?;
 
         // 3. Place event in slot
@@ -179,15 +177,12 @@ impl EventAllocator {
         }))
     }
 
-    pub fn allocate_s_event(
-        &self,
-        data: &[u8],
-        event_type: u32,
-    ) -> Result<RingPtr<PooledEvent<256>>, AllocationError> {
-        let pooled_event = Self::create_pooled_event::<256>(data, event_type)
-            .map_err(|e| AllocationError::EventCreation(e))?;
+    pub fn allocate_s_event(&self, data: &[u8], event_type: u32) -> Result<RingPtr<PooledEvent<256>>, AllocationError> {
+        let pooled_event =
+            Self::create_pooled_event::<256>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
 
-        let slot_index = self.find_available_slot(PoolId::S)
+        let slot_index = self
+            .find_available_slot(PoolId::S)
             .ok_or(AllocationError::PoolFull(PoolId::S))?;
 
         self.pools.place_s_event(pooled_event, slot_index);
@@ -203,10 +198,11 @@ impl EventAllocator {
         data: &[u8],
         event_type: u32,
     ) -> Result<RingPtr<PooledEvent<1024>>, AllocationError> {
-        let pooled_event = Self::create_pooled_event::<1024>(data, event_type)
-            .map_err(|e| AllocationError::EventCreation(e))?;
+        let pooled_event =
+            Self::create_pooled_event::<1024>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
 
-        let slot_index = self.find_available_slot(PoolId::M)
+        let slot_index = self
+            .find_available_slot(PoolId::M)
             .ok_or(AllocationError::PoolFull(PoolId::M))?;
 
         self.pools.place_m_event(pooled_event, slot_index);
@@ -222,10 +218,11 @@ impl EventAllocator {
         data: &[u8],
         event_type: u32,
     ) -> Result<RingPtr<PooledEvent<4096>>, AllocationError> {
-        let pooled_event = Self::create_pooled_event::<4096>(data, event_type)
-            .map_err(|e| AllocationError::EventCreation(e))?;
+        let pooled_event =
+            Self::create_pooled_event::<4096>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
 
-        let slot_index = self.find_available_slot(PoolId::L)
+        let slot_index = self
+            .find_available_slot(PoolId::L)
             .ok_or(AllocationError::PoolFull(PoolId::L))?;
 
         self.pools.place_l_event(pooled_event, slot_index);
@@ -241,10 +238,11 @@ impl EventAllocator {
         data: &[u8],
         event_type: u32,
     ) -> Result<RingPtr<PooledEvent<16384>>, AllocationError> {
-        let pooled_event = Self::create_pooled_event::<16384>(data, event_type)
-            .map_err(|e| AllocationError::EventCreation(e))?;
+        let pooled_event =
+            Self::create_pooled_event::<16384>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
 
-        let slot_index = self.find_available_slot(PoolId::XL)
+        let slot_index = self
+            .find_available_slot(PoolId::XL)
             .ok_or(AllocationError::PoolFull(PoolId::XL))?;
 
         self.pools.place_xl_event(pooled_event, slot_index);
@@ -256,11 +254,7 @@ impl EventAllocator {
     }
 
     /// Convenience method that auto-detects size and allocates
-    pub fn allocate_event(
-        &self,
-        data: &[u8],
-        event_type: u32,
-    ) -> Result<AllocatedEvent, AllocationError> {
+    pub fn allocate_event(&self, data: &[u8], event_type: u32) -> Result<AllocatedEvent, AllocationError> {
         let size = Self::estimate_size(data.len());
 
         match size {
@@ -357,13 +351,14 @@ pub enum AllocationError {
     TooLarge { data_len: usize, max_size: usize },
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::thread;
-    use std::sync::{Arc, OnceLock};
+    use std::{
+        sync::{Arc, OnceLock},
+        thread,
+    };
 
+    use super::*;
 
     //#[test]
     // fn test_smaller_stack_allocations() {
@@ -584,10 +579,9 @@ mod tests {
 
                 for i in 0..10 {
                     let data = format!("thread_{}_event_{}", thread_id, i);
-                    let event = allocator_clone.allocate_event(
-                        data.as_bytes(),
-                        (thread_id * 10 + i) as u32
-                    ).unwrap();
+                    let event = allocator_clone
+                        .allocate_event(data.as_bytes(), (thread_id * 10 + i) as u32)
+                        .unwrap();
 
                     // Verify the data
                     assert_eq!(event.data(), data.as_bytes());

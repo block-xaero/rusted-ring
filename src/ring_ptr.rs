@@ -1,11 +1,11 @@
+use std::{fmt, fmt::Debug, marker::PhantomData, ops::Deref};
+
 use crate::{allocator::EventAllocator, pool::PoolId};
-use std::{fmt, marker::PhantomData, ops::Deref};
-use std::fmt::Debug;
 
 pub struct RingPtr<T> {
     pub pool_id: PoolId,
     pub slot_index: u32,
-    pub generation: u32,  // Not atomic in RingPtr - just a snapshot
+    pub generation: u32, // Not atomic in RingPtr - just a snapshot
     allocator: &'static EventAllocator,
     // this phantom data often confuses me, so I am putting a comment here. Go ahead Sue me.
     _phantom: PhantomData<T>, // "Hey Rust, I care about type T, trust me!"
@@ -43,9 +43,7 @@ impl<T> Deref for RingPtr<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            &*(self.allocator.pools.get_slot_data(self.pool_id, self.slot_index) as *const T)
-        }
+        unsafe { &*(self.allocator.pools.get_slot_data(self.pool_id, self.slot_index) as *const T) }
     }
 }
 
@@ -55,11 +53,11 @@ impl<T> Clone for RingPtr<T> {
         self.allocator.pools.inc_ref_count(self.pool_id, self.slot_index);
 
         Self {
-            pool_id: self.pool_id,           // PoolId - Copy
-            slot_index: self.slot_index,     // u32 - Copy
-            generation: self.generation,     // u32 - Copy
-            allocator: self.allocator,       // &'static - Copy
-            _phantom: PhantomData,           // Zero-sized
+            pool_id: self.pool_id,       // PoolId - Copy
+            slot_index: self.slot_index, // u32 - Copy
+            generation: self.generation, // u32 - Copy
+            allocator: self.allocator,   // &'static - Copy
+            _phantom: PhantomData,       // Zero-sized
         }
     }
 }
@@ -69,7 +67,8 @@ impl<T> Drop for RingPtr<T> {
         // Decrement the atomic ref count in the actual slot
         let remaining = self.allocator.pools.dec_ref_count(self.pool_id, self.slot_index);
 
-        if remaining == 1 {  // We were the last reference (fetch_sub returns old value)
+        if remaining == 1 {
+            // We were the last reference (fetch_sub returns old value)
             // Last reference dropped - mark slot as reusable
             self.allocator.pools.mark_slot_reusable(self.pool_id, self.slot_index);
         }
