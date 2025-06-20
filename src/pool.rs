@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use crate::ring::{EventSize, RingBuffer, PooledEvent};
+use std::sync::{Arc, atomic::Ordering};
+
+use crate::ring::{EventSize, PooledEvent, RingBuffer};
 
 // Pool size constants - Adjusted to stay under 1MB per ring buffer
 pub const XS_CAPACITY: usize = 2000; // 64 * 2000 = 128KB
@@ -234,32 +234,27 @@ impl EventPools {
                 PoolId::XS => {
                     let ptr = self.xs_pool.metadata.get();
                     let slot = &(*ptr)[slot_index as usize];
-                    slot.ref_count.load(Ordering::Acquire) == 0 &&
-                        slot.is_allocated.load(Ordering::Acquire) == 0
+                    slot.ref_count.load(Ordering::Acquire) == 0 && slot.is_allocated.load(Ordering::Acquire) == 0
                 }
                 PoolId::S => {
                     let ptr = self.s_pool.metadata.get();
                     let slot = &(*ptr)[slot_index as usize];
-                    slot.ref_count.load(Ordering::Acquire) == 0 &&
-                        slot.is_allocated.load(Ordering::Acquire) == 0
+                    slot.ref_count.load(Ordering::Acquire) == 0 && slot.is_allocated.load(Ordering::Acquire) == 0
                 }
                 PoolId::M => {
                     let ptr = self.m_pool.metadata.get();
                     let slot = &(*ptr)[slot_index as usize];
-                    slot.ref_count.load(Ordering::Acquire) == 0 &&
-                        slot.is_allocated.load(Ordering::Acquire) == 0
+                    slot.ref_count.load(Ordering::Acquire) == 0 && slot.is_allocated.load(Ordering::Acquire) == 0
                 }
                 PoolId::L => {
                     let ptr = self.l_pool.metadata.get();
                     let slot = &(*ptr)[slot_index as usize];
-                    slot.ref_count.load(Ordering::Acquire) == 0 &&
-                        slot.is_allocated.load(Ordering::Acquire) == 0
+                    slot.ref_count.load(Ordering::Acquire) == 0 && slot.is_allocated.load(Ordering::Acquire) == 0
                 }
                 PoolId::XL => {
                     let ptr = self.xl_pool.metadata.get();
                     let slot = &(*ptr)[slot_index as usize];
-                    slot.ref_count.load(Ordering::Acquire) == 0 &&
-                        slot.is_allocated.load(Ordering::Acquire) == 0
+                    slot.ref_count.load(Ordering::Acquire) == 0 && slot.is_allocated.load(Ordering::Acquire) == 0
                 }
             }
         }
@@ -279,11 +274,11 @@ impl EventPools {
                     }
 
                     // Atomically try to claim: is_allocated 0 -> 1
-                    if slot.is_allocated.compare_exchange(
-                        0, 1,
-                        Ordering::AcqRel,
-                        Ordering::Acquire
-                    ).is_ok() {
+                    if slot
+                        .is_allocated
+                        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
                         // Successfully claimed, set initial ref count
                         slot.ref_count.store(1, Ordering::Release);
                         true
@@ -299,11 +294,11 @@ impl EventPools {
                         return false;
                     }
 
-                    if slot.is_allocated.compare_exchange(
-                        0, 1,
-                        Ordering::AcqRel,
-                        Ordering::Acquire
-                    ).is_ok() {
+                    if slot
+                        .is_allocated
+                        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
                         slot.ref_count.store(1, Ordering::Release);
                         true
                     } else {
@@ -318,11 +313,11 @@ impl EventPools {
                         return false;
                     }
 
-                    if slot.is_allocated.compare_exchange(
-                        0, 1,
-                        Ordering::AcqRel,
-                        Ordering::Acquire
-                    ).is_ok() {
+                    if slot
+                        .is_allocated
+                        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
                         slot.ref_count.store(1, Ordering::Release);
                         true
                     } else {
@@ -337,11 +332,11 @@ impl EventPools {
                         return false;
                     }
 
-                    if slot.is_allocated.compare_exchange(
-                        0, 1,
-                        Ordering::AcqRel,
-                        Ordering::Acquire
-                    ).is_ok() {
+                    if slot
+                        .is_allocated
+                        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
                         slot.ref_count.store(1, Ordering::Release);
                         true
                     } else {
@@ -356,11 +351,11 @@ impl EventPools {
                         return false;
                     }
 
-                    if slot.is_allocated.compare_exchange(
-                        0, 1,
-                        Ordering::AcqRel,
-                        Ordering::Acquire
-                    ).is_ok() {
+                    if slot
+                        .is_allocated
+                        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
                         slot.ref_count.store(1, Ordering::Release);
                         true
                     } else {
@@ -434,6 +429,7 @@ impl EventPools {
             }
         }
     }
+
     pub fn get_pool_stats(&self, pool_id: PoolId) -> PoolStats {
         let capacity = pool_id.capacity();
         let mut allocated_slots = 0;
@@ -447,7 +443,7 @@ impl EventPools {
                         let slot = &(*ptr)[slot_index];
                         (
                             slot.ref_count.load(Ordering::Acquire),
-                            slot.is_allocated.load(Ordering::Acquire)
+                            slot.is_allocated.load(Ordering::Acquire),
                         )
                     }
                     PoolId::S => {
@@ -455,7 +451,7 @@ impl EventPools {
                         let slot = &(*ptr)[slot_index];
                         (
                             slot.ref_count.load(Ordering::Acquire),
-                            slot.is_allocated.load(Ordering::Acquire)
+                            slot.is_allocated.load(Ordering::Acquire),
                         )
                     }
                     PoolId::M => {
@@ -463,7 +459,7 @@ impl EventPools {
                         let slot = &(*ptr)[slot_index];
                         (
                             slot.ref_count.load(Ordering::Acquire),
-                            slot.is_allocated.load(Ordering::Acquire)
+                            slot.is_allocated.load(Ordering::Acquire),
                         )
                     }
                     PoolId::L => {
@@ -471,7 +467,7 @@ impl EventPools {
                         let slot = &(*ptr)[slot_index];
                         (
                             slot.ref_count.load(Ordering::Acquire),
-                            slot.is_allocated.load(Ordering::Acquire)
+                            slot.is_allocated.load(Ordering::Acquire),
                         )
                     }
                     PoolId::XL => {
@@ -479,7 +475,7 @@ impl EventPools {
                         let slot = &(*ptr)[slot_index];
                         (
                             slot.ref_count.load(Ordering::Acquire),
-                            slot.is_allocated.load(Ordering::Acquire)
+                            slot.is_allocated.load(Ordering::Acquire),
                         )
                     }
                 };
@@ -517,11 +513,7 @@ impl std::fmt::Display for PoolStats {
         write!(
             f,
             "Pool {:?}: {}/{} slots ({:.1}%), {} total refs",
-            self.pool_id,
-            self.allocated_slots,
-            self.total_slots,
-            self.utilization_percent,
-            self.total_references
+            self.pool_id, self.allocated_slots, self.total_slots, self.utilization_percent, self.total_references
         )
     }
 }

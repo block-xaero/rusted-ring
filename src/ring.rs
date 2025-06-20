@@ -2,9 +2,10 @@ use std::{
     cell::UnsafeCell,
     sync::{
         Arc,
-        atomic::{AtomicUsize, AtomicU16, AtomicU8, Ordering},
+        atomic::{AtomicU8, AtomicU16, AtomicUsize, Ordering},
     },
 };
+
 use bytemuck::{Pod, Zeroable};
 
 /// T-shirt sizing of events
@@ -33,7 +34,7 @@ unsafe impl<const TSHIRT_SIZE: usize> Zeroable for PooledEvent<TSHIRT_SIZE> {}
 pub struct SlotMetadata {
     pub ref_count: AtomicU8,
     pub generation: AtomicU16,
-    pub is_allocated: AtomicU8,  // 0 = free, 1 = allocated
+    pub is_allocated: AtomicU8, // 0 = free, 1 = allocated
 }
 
 impl Default for SlotMetadata {

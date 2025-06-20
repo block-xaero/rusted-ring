@@ -11,7 +11,9 @@ pub use ring_ptr::*;
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, thread};
+
     use bytemuck::Zeroable;
+
     use super::*;
 
     // Test-specific smaller pools to avoid stack overflow
@@ -110,23 +112,33 @@ mod tests {
                 match pool_id {
                     PoolId::XS => {
                         let ptr = self.xs_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::S => {
                         let ptr = self.s_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::M => {
                         let ptr = self.m_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::L => {
                         let ptr = self.l_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::XL => {
                         let ptr = self.xl_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
                     }
                 }
             }
@@ -137,23 +149,33 @@ mod tests {
                 match pool_id {
                     PoolId::XS => {
                         let ptr = self.xs_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::S => {
                         let ptr = self.s_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::M => {
                         let ptr = self.m_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::L => {
                         let ptr = self.l_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
                     }
                     PoolId::XL => {
                         let ptr = self.xl_pool.metadata.get();
-                        (*ptr)[slot_index as usize].ref_count.fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
+                        (*ptr)[slot_index as usize]
+                            .ref_count
+                            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel)
                     }
                 }
             }
@@ -164,28 +186,48 @@ mod tests {
                 match pool_id {
                     PoolId::XS => {
                         let ptr = self.xs_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.fetch_add(1, std::sync::atomic::Ordering::Release);
-                        (*ptr)[slot_index as usize].is_allocated.store(0, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .fetch_add(1, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .is_allocated
+                            .store(0, std::sync::atomic::Ordering::Release);
                     }
                     PoolId::S => {
                         let ptr = self.s_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.fetch_add(1, std::sync::atomic::Ordering::Release);
-                        (*ptr)[slot_index as usize].is_allocated.store(0, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .fetch_add(1, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .is_allocated
+                            .store(0, std::sync::atomic::Ordering::Release);
                     }
                     PoolId::M => {
                         let ptr = self.m_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.fetch_add(1, std::sync::atomic::Ordering::Release);
-                        (*ptr)[slot_index as usize].is_allocated.store(0, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .fetch_add(1, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .is_allocated
+                            .store(0, std::sync::atomic::Ordering::Release);
                     }
                     PoolId::L => {
                         let ptr = self.l_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.fetch_add(1, std::sync::atomic::Ordering::Release);
-                        (*ptr)[slot_index as usize].is_allocated.store(0, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .fetch_add(1, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .is_allocated
+                            .store(0, std::sync::atomic::Ordering::Release);
                     }
                     PoolId::XL => {
                         let ptr = self.xl_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.fetch_add(1, std::sync::atomic::Ordering::Release);
-                        (*ptr)[slot_index as usize].is_allocated.store(0, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .fetch_add(1, std::sync::atomic::Ordering::Release);
+                        (*ptr)[slot_index as usize]
+                            .is_allocated
+                            .store(0, std::sync::atomic::Ordering::Release);
                     }
                 }
             }
@@ -196,23 +238,33 @@ mod tests {
                 match pool_id {
                     PoolId::XS => {
                         let ptr = self.xs_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.load(std::sync::atomic::Ordering::Acquire) as u32
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .load(std::sync::atomic::Ordering::Acquire) as u32
                     }
                     PoolId::S => {
                         let ptr = self.s_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.load(std::sync::atomic::Ordering::Acquire) as u32
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .load(std::sync::atomic::Ordering::Acquire) as u32
                     }
                     PoolId::M => {
                         let ptr = self.m_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.load(std::sync::atomic::Ordering::Acquire) as u32
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .load(std::sync::atomic::Ordering::Acquire) as u32
                     }
                     PoolId::L => {
                         let ptr = self.l_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.load(std::sync::atomic::Ordering::Acquire) as u32
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .load(std::sync::atomic::Ordering::Acquire) as u32
                     }
                     PoolId::XL => {
                         let ptr = self.xl_pool.metadata.get();
-                        (*ptr)[slot_index as usize].generation.load(std::sync::atomic::Ordering::Acquire) as u32
+                        (*ptr)[slot_index as usize]
+                            .generation
+                            .load(std::sync::atomic::Ordering::Acquire) as u32
                     }
                 }
             }
@@ -226,28 +278,48 @@ mod tests {
             match pool_id {
                 PoolId::XS => unsafe {
                     let ptr = self.xs_pool.metadata.get();
-                    (*ptr)[slot_index as usize].ref_count.store(1, std::sync::atomic::Ordering::Release);
-                    (*ptr)[slot_index as usize].is_allocated.store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .ref_count
+                        .store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .is_allocated
+                        .store(1, std::sync::atomic::Ordering::Release);
                 },
                 PoolId::S => unsafe {
                     let ptr = self.s_pool.metadata.get();
-                    (*ptr)[slot_index as usize].ref_count.store(1, std::sync::atomic::Ordering::Release);
-                    (*ptr)[slot_index as usize].is_allocated.store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .ref_count
+                        .store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .is_allocated
+                        .store(1, std::sync::atomic::Ordering::Release);
                 },
                 PoolId::M => unsafe {
                     let ptr = self.m_pool.metadata.get();
-                    (*ptr)[slot_index as usize].ref_count.store(1, std::sync::atomic::Ordering::Release);
-                    (*ptr)[slot_index as usize].is_allocated.store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .ref_count
+                        .store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .is_allocated
+                        .store(1, std::sync::atomic::Ordering::Release);
                 },
                 PoolId::L => unsafe {
                     let ptr = self.l_pool.metadata.get();
-                    (*ptr)[slot_index as usize].ref_count.store(1, std::sync::atomic::Ordering::Release);
-                    (*ptr)[slot_index as usize].is_allocated.store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .ref_count
+                        .store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .is_allocated
+                        .store(1, std::sync::atomic::Ordering::Release);
                 },
                 PoolId::XL => unsafe {
                     let ptr = self.xl_pool.metadata.get();
-                    (*ptr)[slot_index as usize].ref_count.store(1, std::sync::atomic::Ordering::Release);
-                    (*ptr)[slot_index as usize].is_allocated.store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .ref_count
+                        .store(1, std::sync::atomic::Ordering::Release);
+                    (*ptr)[slot_index as usize]
+                        .is_allocated
+                        .store(1, std::sync::atomic::Ordering::Release);
                 },
             }
 
@@ -280,9 +352,7 @@ mod tests {
         type Target = T;
 
         fn deref(&self) -> &Self::Target {
-            unsafe {
-                &*(self.allocator.get_slot_data(self.pool_id, self.slot_index) as *const T)
-            }
+            unsafe { &*(self.allocator.get_slot_data(self.pool_id, self.slot_index) as *const T) }
         }
     }
 
@@ -302,7 +372,8 @@ mod tests {
     impl<T> Drop for TestRingPtr<T> {
         fn drop(&mut self) {
             let remaining = self.allocator.dec_ref_count(self.pool_id, self.slot_index);
-            if remaining == 1 {  // We were the last reference
+            if remaining == 1 {
+                // We were the last reference
                 self.allocator.mark_slot_reusable(self.pool_id, self.slot_index);
             }
         }
@@ -337,8 +408,7 @@ mod tests {
         let mut reader = allocator.get_xs_reader();
 
         // Create test event
-        let test_event = EventAllocator::create_pooled_event::<64>(b"test event", 1)
-            .expect("Failed to create event");
+        let test_event = EventAllocator::create_pooled_event::<64>(b"test event", 1).expect("Failed to create event");
 
         // Write event
         assert!(writer.add(test_event));
@@ -397,8 +467,7 @@ mod tests {
         let allocator = get_test_allocator();
 
         // Manually place test data in slot 0
-        let test_event = EventAllocator::create_pooled_event::<64>(b"test data", 42)
-            .expect("Failed to create event");
+        let test_event = EventAllocator::create_pooled_event::<64>(b"test data", 42).expect("Failed to create event");
 
         unsafe {
             let ptr = allocator.xs_pool.data.get();
@@ -420,8 +489,8 @@ mod tests {
         let allocator = get_test_allocator();
 
         // Manually place test data in slot 1
-        let test_event = EventAllocator::create_pooled_event::<256>(b"ref count test", 100)
-            .expect("Failed to create event");
+        let test_event =
+            EventAllocator::create_pooled_event::<256>(b"ref count test", 100).expect("Failed to create event");
 
         unsafe {
             let ptr = allocator.s_pool.data.get();
@@ -472,8 +541,8 @@ mod tests {
         let allocator = get_test_allocator();
 
         // Manually place test data in slot 2
-        let test_event = EventAllocator::create_pooled_event::<1024>(b"slot reuse test", 200)
-            .expect("Failed to create event");
+        let test_event =
+            EventAllocator::create_pooled_event::<1024>(b"slot reuse test", 200).expect("Failed to create event");
 
         unsafe {
             let ptr = allocator.m_pool.data.get();
@@ -507,8 +576,8 @@ mod tests {
         let allocator = get_test_allocator();
 
         // Manually place test data in slot 3
-        let test_event = EventAllocator::create_pooled_event::<64>(b"thread test", 300)
-            .expect("Failed to create event");
+        let test_event =
+            EventAllocator::create_pooled_event::<64>(b"thread test", 300).expect("Failed to create event");
 
         unsafe {
             let ptr = allocator.xs_pool.data.get();
@@ -553,8 +622,7 @@ mod tests {
 
         // Create test event with known data pattern
         let test_data = b"zero copy validation test data for ring buffer";
-        let test_event = EventAllocator::create_pooled_event::<256>(test_data, 400)
-            .expect("Failed to create event");
+        let test_event = EventAllocator::create_pooled_event::<256>(test_data, 400).expect("Failed to create event");
 
         // Manually place in slot 0
         unsafe {
@@ -587,8 +655,7 @@ mod tests {
         let allocator = get_test_allocator();
 
         // Manually place first event in slot 4
-        let event1 = EventAllocator::create_pooled_event::<64>(b"first event", 500)
-            .expect("Failed to create event");
+        let event1 = EventAllocator::create_pooled_event::<64>(b"first event", 500).expect("Failed to create event");
 
         unsafe {
             let ptr = allocator.xs_pool.data.get();
@@ -608,8 +675,7 @@ mod tests {
         } // Dropped here, generation should increment
 
         // Create second event in same slot (simulating slot reuse)
-        let event2 = EventAllocator::create_pooled_event::<64>(b"second event", 501)
-            .expect("Failed to create event");
+        let event2 = EventAllocator::create_pooled_event::<64>(b"second event", 501).expect("Failed to create event");
         // Manually overwrite slot 4 (simulating writer reusing the slot)
         unsafe {
             let ptr = allocator.xs_pool.data.get();
@@ -655,10 +721,9 @@ mod tests {
         // Simulate operator pipeline: create 5 events to "fold/reduce"
         let mut ring_ptrs = Vec::new();
         for i in 0..5 {
-            let test_event = EventAllocator::create_pooled_event::<64>(
-                format!("event {}", i).as_bytes(),
-                600 + i as u32
-            ).expect("Failed to create event");
+            let test_event =
+                EventAllocator::create_pooled_event::<64>(format!("event {}", i).as_bytes(), 600 + i as u32)
+                    .expect("Failed to create event");
 
             // Manually place in specific slots
             unsafe {
