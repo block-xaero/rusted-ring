@@ -12,17 +12,17 @@ pub struct EventAllocator {
 }
 
 impl EventAllocator {
-    pub fn new() -> Self {
-        Self {
-            pools: Arc::new(EventPools {
-                xs_pool: Arc::new(RingBuffer::new()),
-                s_pool: Arc::new(RingBuffer::new()),
-                m_pool: Arc::new(RingBuffer::new()),
-                l_pool: Arc::new(RingBuffer::new()),
-                xl_pool: Arc::new(RingBuffer::new()),
-            }),
+        pub fn new() -> Self {
+            Self {
+                pools: Arc::new(EventPools {
+                    xs_pool: Arc::new(RingBuffer::new()),
+                    s_pool: Arc::new(RingBuffer::new()),
+                    m_pool: Arc::new(RingBuffer::new()),
+                    l_pool: Arc::new(RingBuffer::new()),
+                    xl_pool: Arc::new(RingBuffer::new()),
+                }),
+            }
         }
-    }
 
     // Get writers for each size (for LMAX-style sequential writing if needed)
     pub fn get_xs_writer(&self) -> Writer<64, 2000> {
