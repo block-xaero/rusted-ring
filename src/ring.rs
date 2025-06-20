@@ -51,8 +51,8 @@ const MAX_STACK_BYTES: usize = 1_048_576; // 1MB max per ring buffer
 
 #[repr(C, align(64))]
 pub struct RingBuffer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
-    pub(crate) data: UnsafeCell<[PooledEvent<TSHIRT_SIZE>; RING_CAPACITY]>,
-    pub(crate) metadata: UnsafeCell<[SlotMetadata; RING_CAPACITY]>,
+    pub data: UnsafeCell<[PooledEvent<TSHIRT_SIZE>; RING_CAPACITY]>,
+    pub metadata: UnsafeCell<[SlotMetadata; RING_CAPACITY]>,
     pub write_cursor: AtomicUsize,
 }
 
