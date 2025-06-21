@@ -1,5 +1,6 @@
 pub mod allocator;
 pub mod pool;
+mod pooled_event_ptr;
 pub mod ring;
 pub mod ring_ptr;
 
@@ -47,34 +48,6 @@ mod tests {
             Reader {
                 ringbuffer: self.xs_pool.clone(),
                 cursor: 0,
-                last_ts: 0,
-            }
-        }
-
-        fn get_s_writer(&self) -> Writer<256, 50> {
-            Writer {
-                ringbuffer: self.s_pool.clone(),
-                last_ts: 0,
-            }
-        }
-
-        fn get_m_writer(&self) -> Writer<1024, 20> {
-            Writer {
-                ringbuffer: self.m_pool.clone(),
-                last_ts: 0,
-            }
-        }
-
-        fn get_l_writer(&self) -> Writer<4096, 10> {
-            Writer {
-                ringbuffer: self.l_pool.clone(),
-                last_ts: 0,
-            }
-        }
-
-        fn get_xl_writer(&self) -> Writer<16384, 5> {
-            Writer {
-                ringbuffer: self.xl_pool.clone(),
                 last_ts: 0,
             }
         }
@@ -741,7 +714,7 @@ mod tests {
         }
 
         // Simulate processing: clone all RingPtrs (increment ref counts)
-        let cloned_ptrs: Vec<_> = ring_ptrs.iter().cloned().collect();
+        let cloned_ptrs: Vec<_> = ring_ptrs.to_vec();
 
         // Verify ref counts are 2 for each slot
         for i in 0..5 {

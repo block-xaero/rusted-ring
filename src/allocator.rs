@@ -4,12 +4,19 @@ use bytemuck::Zeroable;
 
 use crate::{
     pool::{EventPools, PoolId},
+    pooled_event_ptr::PooledEventPtr,
     ring::{EventSize, PooledEvent, Reader, RingBuffer, Writer},
     ring_ptr::RingPtr,
 };
 
 pub struct EventAllocator {
     pub pools: Arc<EventPools>,
+}
+
+impl Default for EventAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EventAllocator {
@@ -155,8 +162,7 @@ impl EventAllocator {
     /// Allocate event to ring buffer slot and return RingPtr - separate methods for each size
     pub fn allocate_xs_event(&self, data: &[u8], event_type: u32) -> Result<RingPtr<PooledEvent<64>>, AllocationError> {
         // 1. Create the pooled event
-        let pooled_event =
-            Self::create_pooled_event::<64>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
+        let pooled_event = Self::create_pooled_event::<64>(data, event_type).map_err(AllocationError::EventCreation)?;
 
         // 2. Find available slot
         let slot_index = self
@@ -179,7 +185,7 @@ impl EventAllocator {
 
     pub fn allocate_s_event(&self, data: &[u8], event_type: u32) -> Result<RingPtr<PooledEvent<256>>, AllocationError> {
         let pooled_event =
-            Self::create_pooled_event::<256>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
+            Self::create_pooled_event::<256>(data, event_type).map_err(AllocationError::EventCreation)?;
 
         let slot_index = self
             .find_available_slot(PoolId::S)
@@ -199,7 +205,7 @@ impl EventAllocator {
         event_type: u32,
     ) -> Result<RingPtr<PooledEvent<1024>>, AllocationError> {
         let pooled_event =
-            Self::create_pooled_event::<1024>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
+            Self::create_pooled_event::<1024>(data, event_type).map_err(AllocationError::EventCreation)?;
 
         let slot_index = self
             .find_available_slot(PoolId::M)
@@ -219,7 +225,7 @@ impl EventAllocator {
         event_type: u32,
     ) -> Result<RingPtr<PooledEvent<4096>>, AllocationError> {
         let pooled_event =
-            Self::create_pooled_event::<4096>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
+            Self::create_pooled_event::<4096>(data, event_type).map_err(AllocationError::EventCreation)?;
 
         let slot_index = self
             .find_available_slot(PoolId::L)
@@ -239,7 +245,7 @@ impl EventAllocator {
         event_type: u32,
     ) -> Result<RingPtr<PooledEvent<16384>>, AllocationError> {
         let pooled_event =
-            Self::create_pooled_event::<16384>(data, event_type).map_err(|e| AllocationError::EventCreation(e))?;
+            Self::create_pooled_event::<16384>(data, event_type).map_err(AllocationError::EventCreation)?;
 
         let slot_index = self
             .find_available_slot(PoolId::XL)
@@ -284,6 +290,25 @@ impl EventAllocator {
             }),
         }
     }
+
+    pub fn allocate_and_get_pooled_event_ptr(
+        &self,
+        data: &[u8],
+        event_type: u32,
+    ) -> Result<PooledEventPtr, AllocationError> {
+        let size = Self::estimate_size(data.len());
+        match size {
+            EventSize::XS => Ok(PooledEventPtr::Xs(self.allocate_xs_event(data, event_type)?)),
+            EventSize::S => Ok(PooledEventPtr::S(self.allocate_s_event(data, event_type)?)),
+            EventSize::M => Ok(PooledEventPtr::M(self.allocate_m_event(data, event_type)?)),
+            EventSize::L => Ok(PooledEventPtr::L(self.allocate_l_event(data, event_type)?)),
+            EventSize::XL => Ok(PooledEventPtr::Xl(self.allocate_xl_event(data, event_type)?)),
+            EventSize::XXL => Err(AllocationError::TooLarge {
+                data_len: data.len(),
+                max_size: 16384,
+            }),
+        }
+    }
 }
 
 /// Wrapper for allocated events of different sizes
@@ -308,6 +333,26 @@ impl AllocatedEvent {
         }
     }
 
+    pub fn slot_index(&self) -> u32 {
+        match self {
+            AllocatedEvent::Xs(ptr) => ptr.slot_index,
+            AllocatedEvent::S(ptr) => ptr.slot_index,
+            AllocatedEvent::M(ptr) => ptr.slot_index,
+            AllocatedEvent::L(ptr) => ptr.slot_index,
+            AllocatedEvent::Xl(ptr) => ptr.slot_index,
+        }
+    }
+
+    pub fn into_pooled_event_ptr(self) -> PooledEventPtr {
+        match self {
+            AllocatedEvent::Xs(ptr) => PooledEventPtr::Xs(ptr),
+            AllocatedEvent::S(ptr) => PooledEventPtr::S(ptr),
+            AllocatedEvent::M(ptr) => PooledEventPtr::M(ptr),
+            AllocatedEvent::L(ptr) => PooledEventPtr::L(ptr),
+            AllocatedEvent::Xl(ptr) => PooledEventPtr::Xl(ptr),
+        }
+    }
+
     pub fn event_type(&self) -> u32 {
         match self {
             AllocatedEvent::Xs(ring_ptr) => ring_ptr.event_type,
@@ -318,6 +363,7 @@ impl AllocatedEvent {
         }
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> u32 {
         match self {
             AllocatedEvent::Xs(ring_ptr) => ring_ptr.len,
@@ -546,7 +592,7 @@ mod tests {
 
         // Allocate events of different sizes simultaneously
         let xs_event = allocator.allocate_xs_event(b"xs", 1).unwrap();
-        let s_event = allocator.allocate_s_event(&vec![0u8; 100], 2).unwrap();
+        let s_event = allocator.allocate_s_event(&[0u8; 100], 2).unwrap();
         let m_event = allocator.allocate_m_event(&vec![0u8; 500], 3).unwrap();
         let l_event = allocator.allocate_l_event(&vec![0u8; 2000], 4).unwrap();
         let xl_event = allocator.allocate_xl_event(&vec![0u8; 8000], 5).unwrap();
@@ -663,7 +709,7 @@ mod tests {
 
         // Test each variant of AllocatedEvent
         let xs_event = allocator.allocate_event(b"xs", 1).unwrap();
-        let s_event = allocator.allocate_event(&vec![0u8; 100], 2).unwrap();
+        let s_event = allocator.allocate_event(&[0u8; 100], 2).unwrap();
         let m_event = allocator.allocate_event(&vec![0u8; 500], 3).unwrap();
         let l_event = allocator.allocate_event(&vec![0u8; 2000], 4).unwrap();
         let xl_event = allocator.allocate_event(&vec![0u8; 8000], 5).unwrap();
@@ -749,7 +795,7 @@ mod tests {
         let allocator = EventAllocator::new();
 
         // Allocate and drop multiple events to same slot to test generation increment
-        for expected_gen in 1..=5 {
+        for _ in 1..=5 {
             let event = allocator.allocate_xs_event(b"gen_test", 42).unwrap();
             let slot_index = event.slot_index;
             let generation = event.generation;

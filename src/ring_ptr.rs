@@ -1,4 +1,4 @@
-use std::{fmt, fmt::Debug, marker::PhantomData, ops::Deref};
+use std::{fmt, marker::PhantomData, ops::Deref};
 
 use crate::{allocator::EventAllocator, pool::PoolId};
 
