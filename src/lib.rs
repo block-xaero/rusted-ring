@@ -1,6 +1,6 @@
 pub mod allocator;
 pub mod pool;
-mod pooled_event_ptr;
+pub mod pooled_event_ptr;
 pub mod ring;
 pub mod ring_ptr;
 
