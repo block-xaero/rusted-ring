@@ -93,6 +93,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Default for RingBuffe
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZE, RING_CAPACITY> {
     pub fn new() -> Self {
         // Trigger compile-time check
+        #[allow(path_statements)]
         Self::_STACK_GUARD;
 
         unsafe {
