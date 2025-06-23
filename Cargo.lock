@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "rusted-ring"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "bytemuck",
  "thiserror",
