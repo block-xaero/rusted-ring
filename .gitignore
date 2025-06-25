@@ -75,3 +75,5 @@ perf.data*
 # macOS specific
 .AppleDouble
 .LSOverride
+
+benchmark_results
