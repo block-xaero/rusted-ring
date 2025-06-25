@@ -1,0 +1,5 @@
+# LMAX Ring Buffer Performance Metrics
+Generated: Wed Jun 25 12:24:24 PDT 2025
+
+## Key Performance Indicators
+
