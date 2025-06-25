@@ -27,23 +27,6 @@ pub struct PooledEvent<const TSHIRT_SIZE: usize> {
 unsafe impl<const TSHIRT_SIZE: usize> Pod for PooledEvent<TSHIRT_SIZE> {}
 unsafe impl<const TSHIRT_SIZE: usize> Zeroable for PooledEvent<TSHIRT_SIZE> {}
 
-#[repr(C, align(64))]
-pub struct SlotMetadata {
-    pub ref_count: u8,
-    pub is_allocated: u8, // 0 = free, 1 = allocated
-    pub generation: u16,
-}
-
-impl Default for SlotMetadata {
-    fn default() -> Self {
-        Self {
-            ref_count: 0u8,
-            is_allocated: 0u8,
-            generation: 0u16,
-        }
-    }
-}
-
 // Stack safety guards - prevent unreasonable memory usage
 const MAX_STACK_BYTES: usize = 1_048_576; // 1MB max per ring buffer
 
@@ -51,7 +34,6 @@ const MAX_STACK_BYTES: usize = 1_048_576; // 1MB max per ring buffer
 pub struct RingBuffer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     // Single Writer updates this
     pub published_sequence: UnsafeCell<usize>,
-    pub metadata: UnsafeCell<[SlotMetadata; RING_CAPACITY]>,
     pub data: UnsafeCell<[PooledEvent<TSHIRT_SIZE>; RING_CAPACITY]>,
 }
 
@@ -92,7 +74,6 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZ
             Self {
                 published_sequence: UnsafeCell::new(0usize),
                 data: UnsafeCell::new(std::mem::zeroed()),
-                metadata: UnsafeCell::new(std::mem::zeroed()),
             }
         }
     }
@@ -110,13 +91,18 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Reader<TSHIRT_SIZE, R
     }
 
     pub fn backpressure_ratio(&self) -> f32 {
-        // no fence -- this may not be most accurate but certainly fast!
         let ps = self.ringbuffer.published_sequence.get();
         let write_cursor = unsafe { *ps };
         let reader_pos = self.cursor;
-        let lag = write_cursor - reader_pos;
-        // Return ratio: 0.0 = caught up, 1.0 = completely full buffer behind
-        lag as f32 / RING_CAPACITY as f32
+        // Handle wraparound case
+        let lag = if write_cursor >= reader_pos {
+            write_cursor - reader_pos
+        } else {
+            // Wraparound case (rare but possible)
+            return 1.0; // Assume maximum pressure
+        };
+        // Cap at 100% pressure
+        (lag as f32 / RING_CAPACITY as f32).min(1.0)
     }
 
     /// Check if this reader is under pressure

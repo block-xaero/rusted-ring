@@ -3,12 +3,12 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rusted_ring::pool::{EventPoolFactory, EventUtils};
 
-// === REALISTIC XAEROFLUX USAGE BENCHMARKS ===
+// === REALISTIC XAEROFLUX USAGE BENCHMARKS - LMAX AWARE ===
 
 /// Benchmark: FFI events coming into Subject (your real entry point)
 fn bench_ffi_to_subject(c: &mut Criterion) {
     let mut group = c.benchmark_group("ffi_to_subject");
-    group.throughput(Throughput::Elements(1000));
+    group.throughput(Throughput::Elements(250));
 
     // Real FFI event types from your whiteboard
     let ffi_events = vec![
@@ -29,8 +29,8 @@ fn bench_ffi_to_subject(c: &mut Criterion) {
             // Simulate FFI boundary: events arrive in bursts
             let mut subject_writer = EventPoolFactory::get_xs_writer();
 
-            // Burst 1: Rapid drawing (mouse events)
-            for i in 0..100 {
+            // Burst 1: Rapid drawing (mouse events) - REDUCED
+            for i in 0..50 { // Reduced from 100
                 let event_data = ffi_events[i % 2].as_bytes();
                 let event = EventUtils::create_pooled_event::<64>(
                     black_box(event_data),
@@ -41,8 +41,8 @@ fn bench_ffi_to_subject(c: &mut Criterion) {
                 black_box(subject_writer.add(event));
             }
 
-            // Burst 2: Stroke processing
-            for i in 100..200 {
+            // Burst 2: Stroke processing - REDUCED
+            for i in 50..100 { // Reduced range
                 let event_data = ffi_events[(i % 3) + 2].as_bytes();
                 let event = EventUtils::create_pooled_event::<64>(
                     black_box(event_data),
@@ -51,8 +51,8 @@ fn bench_ffi_to_subject(c: &mut Criterion) {
                 black_box(subject_writer.add(event));
             }
 
-            // Burst 3: Network sync (larger events)
-            for i in 200..250 {
+            // Burst 3: Network sync (larger events) - REDUCED
+            for i in 100..150 { // Reduced from 200..250
                 let event_data = ffi_events[(i % 2) + 5].as_bytes();
                 if event_data.len() <= 64 {
                     let event = EventUtils::create_pooled_event::<64>(
@@ -68,22 +68,168 @@ fn bench_ffi_to_subject(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Subject → Pipeline processing (your operators)
-fn bench_subject_to_pipeline(c: &mut Criterion) {
-    let mut group = c.benchmark_group("subject_to_pipeline");
+/// Benchmark: Write-Only Performance (No Reader Issues)
+fn bench_write_only_performance(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_performance");
     group.throughput(Throughput::Elements(1000));
 
-    group.bench_function("real_operator_chain", |b| {
+    group.bench_function("xs_pool_allocation", |b| {
         b.iter(|| {
-            // Stage 1: Subject receives events (from FFI)
-            let mut subject_writer = EventPoolFactory::get_xs_writer();
-            let mut subject_reader = EventPoolFactory::get_xs_reader();
+            let mut writer = EventPoolFactory::get_xs_writer();
 
-            // Stage 2: Pipeline processes (your actual operators)
-            let mut pipeline_writer = EventPoolFactory::get_s_writer();
-
-            // Emit realistic events to subject
+            // Pure write performance test
             for i in 0..1000 {
+                let data = format!("write_test_{}", i % 10); // Reuse data
+                let event = EventUtils::create_pooled_event::<64>(
+                    black_box(data.as_bytes()),
+                    black_box(i as u32)
+                ).unwrap();
+
+                // Measure pure write speed
+                black_box(writer.add(event));
+            }
+        });
+    });
+
+    group.bench_function("s_pool_allocation", |b| {
+        b.iter(|| {
+            let mut writer = EventPoolFactory::get_s_writer();
+
+            for i in 0..1000 {
+                let data = format!("s_write_test_larger_payload_{}", i % 10);
+                let event = EventUtils::create_pooled_event::<256>(
+                    black_box(data.as_bytes()),
+                    black_box(i as u32)
+                ).unwrap();
+
+                black_box(writer.add(event));
+            }
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark: Read Performance with Coordinated Reader
+fn bench_coordinated_read_performance(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_performance");
+    group.throughput(Throughput::Elements(500));
+
+    group.bench_function("coordinated_read_cycle", |b| {
+        b.iter(|| {
+            // Create coordinated writer/reader pair
+            let mut writer = EventPoolFactory::get_xs_writer();
+            let mut reader = EventPoolFactory::get_xs_reader();
+
+            let events_count = 500;
+            let base_event_type = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() % 1_000_000) as u32 + 10_000_000;
+
+            // Write phase
+            for i in 0..events_count {
+                let data = format!("read_test_{}", i % 5);
+                let event = EventUtils::create_pooled_event::<64>(
+                    data.as_bytes(),
+                    base_event_type + i
+                ).unwrap();
+                writer.add(event);
+            }
+
+            // Read phase - look for our events
+            let mut found = 0;
+            let mut total_reads = 0;
+            let expected_min = base_event_type;
+            let expected_max = base_event_type + events_count - 1;
+
+            // Read with safety limit
+            while total_reads < events_count * 2 && found < events_count {
+                if let Some(event) = reader.next() {
+                    total_reads += 1;
+                    if event.event_type >= expected_min && event.event_type <= expected_max {
+                        found += 1;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            black_box((found, total_reads));
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark: Multi-Pool Performance
+fn bench_multi_pool_performance(c: &mut Criterion) {
+    let mut group = c.benchmark_group("multi_pool");
+    group.throughput(Throughput::Elements(300));
+
+    group.bench_function("size_progression", |b| {
+        b.iter(|| {
+            // Simulate real usage: events grow in size as they're processed
+            let mut xs_writer = EventPoolFactory::get_xs_writer();
+            let mut s_writer = EventPoolFactory::get_s_writer();
+            let mut m_writer = EventPoolFactory::get_m_writer();
+
+            // XS: Raw input events
+            for i in 0..100 {
+                let data = format!("input_{}", i);
+                let event = EventUtils::create_pooled_event::<64>(
+                    black_box(data.as_bytes()),
+                    black_box(i as u32)
+                ).unwrap();
+                black_box(xs_writer.add(event));
+            }
+
+            // S: Processed events with metadata
+            for i in 0..100 {
+                let data = format!("processed:id={},metadata={{ts:{},user:alice}}", i, i * 1000);
+                let event = EventUtils::create_pooled_event::<256>(
+                    black_box(data.as_bytes()),
+                    black_box((i + 1000) as u32)
+                ).unwrap();
+                black_box(s_writer.add(event));
+            }
+
+            // M: Aggregated events
+            for i in 0..100 {
+                let data = format!(
+                    "aggregated:batch_id={},events=[{},{},{}],summary={{count:3,avg_x:150,avg_y:200}}",
+                    i, i*3, i*3+1, i*3+2
+                );
+                let event = EventUtils::create_pooled_event::<1024>(
+                    black_box(data.as_bytes()),
+                    black_box((i + 2000) as u32)
+                ).unwrap();
+                black_box(m_writer.add(event));
+            }
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark: Realistic Pipeline (LMAX-Aware)
+fn bench_realistic_pipeline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("realistic_pipeline");
+    group.throughput(Throughput::Elements(50));
+
+    group.bench_function("controlled_pipeline", |b| {
+        b.iter(|| {
+            // Stage 1: Input events
+            let mut input_writer = EventPoolFactory::get_xs_writer();
+
+            let events_count = 50; // Small count to avoid overwrite issues
+            let base_event_type = (std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() % 1_000_000) as u32 + 20_000_000;
+
+            // Write input events
+            for i in 0..events_count {
                 let event_data = match i % 4 {
                     0 => "mouse_move:x=100,y=200",
                     1 => "stroke_point:x=105,y=205",
@@ -93,289 +239,142 @@ fn bench_subject_to_pipeline(c: &mut Criterion) {
 
                 let event = EventUtils::create_pooled_event::<64>(
                     black_box(event_data.as_bytes()),
-                    black_box(i as u32)
+                    black_box(base_event_type + i)
                 ).unwrap();
-                subject_writer.add(event);
+                input_writer.add(event);
             }
 
-            // Pipeline: Apply your real operators (map/filter/buffer/reduce)
+            // Stage 2: Processing
+            let mut input_reader = EventPoolFactory::get_xs_reader();
+            let mut process_writer = EventPoolFactory::get_s_writer();
+
             let mut processed_count = 0;
-            while let Some(raw_event) = subject_reader.next() {
-                // Map: Add metadata (like your vector clocks, timestamps)
-                let event_str = std::str::from_utf8(&raw_event.data[..raw_event.len as usize])
-                    .unwrap_or("");
+            let mut events_read = 0;
+            let expected_min = base_event_type;
+            let expected_max = base_event_type + events_count - 1;
 
-                // Filter: Only process certain event types
-                if raw_event.event_type % 3 != 0 {
-                    // Skip every 3rd event
-                    continue;
-                }
+            // Process events with safety limits
+            while events_read < events_count * 2 && processed_count < events_count {
+                if let Some(raw_event) = input_reader.next() {
+                    events_read += 1;
 
-                // Buffer: Accumulate events (your batching logic)
-                let buffered_data = format!(
-                    "buffered:seq={},data={},meta={{vc:[1,2,3],ts:{}}}",
-                    processed_count, event_str, raw_event.event_type
-                );
+                    // Only process our events
+                    if raw_event.event_type >= expected_min && raw_event.event_type <= expected_max {
+                        // Simulate processing
+                        let event_str = std::str::from_utf8(&raw_event.data[..raw_event.len as usize])
+                            .unwrap_or("");
 
-                // Reduce: Create aggregated event (your CRDT operations)
-                if let Ok(processed_event) = EventUtils::create_pooled_event::<256>(
-                    buffered_data.as_bytes(),
-                    raw_event.event_type + 1000
-                ) {
-                    pipeline_writer.add(processed_event);
-                    processed_count += 1;
+                        // Filter: Only process certain event types
+                        if raw_event.event_type % 3 != 0 {
+                            continue;
+                        }
+
+                        // Create processed event
+                        let processed_data = format!(
+                            "processed:seq={},data={},ts={}",
+                            processed_count, event_str, raw_event.event_type
+                        );
+
+                        if let Ok(processed_event) = EventUtils::create_pooled_event::<256>(
+                            processed_data.as_bytes(),
+                            raw_event.event_type + 10000
+                        ) {
+                            process_writer.add(processed_event);
+                            processed_count += 1;
+                        }
+                    }
+                } else {
+                    break;
                 }
             }
 
-            black_box(processed_count);
+            black_box((processed_count, events_read));
         });
     });
 
     group.finish();
 }
 
-/// Benchmark: Pipeline → System Actors (your storage/network actors)
-fn bench_pipeline_to_actors(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pipeline_to_actors");
-    group.throughput(Throughput::Elements(1000));
-
-    group.bench_function("system_actors_consumption", |b| {
-        b.iter(|| {
-            // Setup: Pipeline has processed events
-            let mut pipeline_writer = EventPoolFactory::get_s_writer();
-
-            // Fill pipeline with processed events
-            for i in 0..1000 {
-                let processed_data = format!(
-                    "processed_event:id={},type=stroke,data={{x:{},y:{},p:0.5}},vc:[{},2,3]",
-                    i, 100 + i, 200 + i, i % 10
-                );
-
-                let event = EventUtils::create_pooled_event::<256>(
-                    black_box(processed_data.as_bytes()),
-                    black_box(i as u32)
-                ).unwrap();
-                pipeline_writer.add(event);
-            }
-
-            // System Actors: Read and process (your real bottleneck)
-            let mut pipeline_reader = EventPoolFactory::get_s_reader();
-
-            // Actor 1: Storage Actor (writes to disk/database)
-            let mut storage_count = 0;
-            while let Some(event) = pipeline_reader.next() {
-                // Simulate storage processing
-                let event_str = std::str::from_utf8(&event.data[..event.len as usize])
-                    .unwrap_or("");
-
-                // Your storage logic: serialize, compress, write
-                black_box(event_str.len()); // Simulate serialization
-                black_box(event.event_type); // Simulate indexing
-
-                storage_count += 1;
-            }
-
-            black_box(storage_count);
-        });
-    });
-
-    group.finish();
-}
-
-/// Benchmark: Peer handshake scenario (network bursts)
-fn bench_peer_handshake(c: &mut Criterion) {
-    let mut group = c.benchmark_group("peer_handshake");
+/// Benchmark: Backpressure Simulation
+fn bench_backpressure_simulation(c: &mut Criterion) {
+    let mut group = c.benchmark_group("backpressure");
     group.throughput(Throughput::Elements(100));
 
-    group.bench_function("network_burst_processing", |b| {
+    group.bench_function("fast_writer_slow_reader", |b| {
         b.iter(|| {
-            // Peer connects: burst of handshake events
-            let mut subject_writer = EventPoolFactory::get_xs_writer();
-            let mut subject_reader = EventPoolFactory::get_xs_reader();
-            let mut pipeline_writer = EventPoolFactory::get_m_writer(); // Larger events
+            let mut writer = EventPoolFactory::get_xs_writer();
+            let reader = EventPoolFactory::get_xs_reader();
 
-            // Phase 1: Handshake burst (real network scenario)
-            let handshake_events = [
-                "peer_connect:id=alice,version=1.0,caps=[sync,draw]",
-                "auth_challenge:nonce=abc123,timestamp=1234567890",
-                "auth_response:signature=def456,pubkey=ghi789",
-                "sync_request:vector_clock=[0,0,0],room=room123",
-                "sync_response:events=100,merkle_root=jkl012",
-            ];
-
-            // Burst: All handshake events arrive quickly
-            for (i, &event_data) in handshake_events.iter().enumerate() {
+            // Fast writer: write many events
+            for i in 0..100 {
+                let data = format!("fast_event_{}", i);
                 let event = EventUtils::create_pooled_event::<64>(
-                    black_box(event_data.as_bytes()),
+                    black_box(data.as_bytes()),
                     black_box(i as u32)
                 ).unwrap();
-                subject_writer.add(event);
+                writer.add(event);
             }
 
-            // Phase 2: Process handshake events
-            let mut handshake_processed = 0;
-            while let Some(event) = subject_reader.next() {
-                let _event_str = std::str::from_utf8(&event.data[..event.len as usize])
-                    .unwrap_or("");
+            // Measure backpressure
+            let backpressure_before = reader.backpressure_ratio();
 
-                // Your handshake processing: validate, update state, respond
-                let response_data = format!(
-                    "handshake_result:step={},peer=alice,status=ok,state={{connected:true,room:room123}}",
-                    handshake_processed
-                );
-
-                if let Ok(response_event) = EventUtils::create_pooled_event::<1024>(
-                    response_data.as_bytes(),
-                    event.event_type + 2000
-                ) {
-                    pipeline_writer.add(response_event);
-                    handshake_processed += 1;
+            // Slow reader: only read a few events
+            let mut reader = reader;
+            let mut consumed = 0;
+            for _ in 0..20 { // Only consume 20% of events
+                if let Some(_event) = reader.next() {
+                    consumed += 1;
+                } else {
+                    break;
                 }
             }
 
-            black_box(handshake_processed);
+            let backpressure_after = reader.backpressure_ratio();
+
+            black_box((consumed, backpressure_before, backpressure_after));
         });
     });
 
     group.finish();
 }
 
-/// Benchmark: Mixed workload (realistic usage pattern)
-fn bench_mixed_workload(c: &mut Criterion) {
-    let mut group = c.benchmark_group("mixed_workload");
+/// Benchmark: Memory Access Patterns
+fn bench_memory_patterns(c: &mut Criterion) {
+    let mut group = c.benchmark_group("memory_patterns");
     group.throughput(Throughput::Elements(1000));
 
-    group.bench_function("realistic_xaeroflux_usage", |b| {
+    group.bench_function("sequential_access", |b| {
         b.iter(|| {
-            // This simulates your real application load
+            let mut writer = EventPoolFactory::get_xs_writer();
 
-            // Multiple event sources (FFI, network, timers)
-            let mut xs_writer = EventPoolFactory::get_xs_writer(); // FFI events
-            let mut xs_reader = EventPoolFactory::get_xs_reader();
-
-            let mut s_writer = EventPoolFactory::get_s_writer(); // Processed events
-            let mut s_reader = EventPoolFactory::get_s_reader();
-
-            let mut m_writer = EventPoolFactory::get_m_writer(); // Aggregated events
-            let mut m_reader = EventPoolFactory::get_m_reader();
-
-            // Phase 1: Burst of user interaction (drawing)
-            for i in 0..200 {
-                let event_data = format!("draw:x={},y={},p=0.{}", 100 + i, 200 + i, i % 10);
+            // Sequential memory access pattern (LMAX strength)
+            for i in 0..1000 {
+                let data = b"sequential_data_pattern_test"; // Fixed size data
                 let event = EventUtils::create_pooled_event::<64>(
-                    black_box(event_data.as_bytes()),
+                    black_box(data),
                     black_box(i as u32)
                 ).unwrap();
-                xs_writer.add(event);
+
+                black_box(writer.add(event));
             }
-
-            // Phase 2: Process drawing events
-            let mut processed = 0;
-            while let Some(draw_event) = xs_reader.next() {
-                if processed % 10 == 0 {
-                    // Buffer every 10 drawing events
-                    let stroke_data = format!(
-                        "stroke:id={},points=10,bbox={{x:100,y:200,w:50,h:30}}",
-                        processed / 10
-                    );
-
-                    if let Ok(stroke_event) = EventUtils::create_pooled_event::<256>(
-                        stroke_data.as_bytes(),
-                        draw_event.event_type + 1000
-                    ) {
-                        s_writer.add(stroke_event);
-                    }
-                }
-                processed += 1;
-            }
-
-            // Phase 3: Network sync events
-            for i in 0..50 {
-                let sync_data = format!("peer_event:from=bob,data=stroke_{}", i);
-                let event = EventUtils::create_pooled_event::<64>(
-                    black_box(sync_data.as_bytes()),
-                    black_box((i + 1000) as u32),
-                ).unwrap();
-                xs_writer.add(event);
-            }
-
-            // Phase 4: Aggregate and store
-            let mut strokes_processed = 0;
-            while let Some(stroke_event) = s_reader.next() {
-                let document_data = format!(
-                    "document_update:strokes={},peers=3,version={},merkle=abc123",
-                    strokes_processed + 1,
-                    strokes_processed
-                );
-
-                if let Ok(doc_event) = EventUtils::create_pooled_event::<1024>(
-                    document_data.as_bytes(),
-                    stroke_event.event_type + 2000
-                ) {
-                    m_writer.add(doc_event);
-                    strokes_processed += 1;
-                }
-            }
-
-            // Phase 5: System actors consume final events
-            let mut stored = 0;
-            while let Some(doc_event) = m_reader.next() {
-                // Storage actor: serialize and persist
-                black_box(&doc_event.data[..doc_event.len as usize]);
-                stored += 1;
-            }
-
-            black_box((processed, strokes_processed, stored));
         });
     });
 
-    group.finish();
-}
-
-/// Benchmark: Backpressure in real scenarios
-fn bench_realistic_backpressure(c: &mut Criterion) {
-    let mut group = c.benchmark_group("realistic_backpressure");
-
-    group.bench_function("fast_drawing_slow_storage", |b| {
+    group.bench_function("cache_aligned_writes", |b| {
         b.iter(|| {
-            // Real scenario: User draws fast, storage/network is slow
-            let mut xs_writer = EventPoolFactory::get_xs_writer();
-            let mut xs_reader = EventPoolFactory::get_xs_reader();
+            // Test cache-aligned 64-byte writes
+            let mut writer = EventPoolFactory::get_xs_writer();
 
-            let mut events_emitted = 0;
-            let mut events_processed = 0;
-            let mut backpressure_triggered = 0;
-
-            // Fast drawing: 1000 events
             for i in 0..1000 {
-                let draw_data = format!("fast_draw:x={},y={}", i, i);
-                if let Ok(event) = EventUtils::create_pooled_event::<64>(
-                    draw_data.as_bytes(),
-                    i as u32
-                ) {
-                    if xs_writer.add(event) {
-                        events_emitted += 1;
-                    } else {
-                        backpressure_triggered += 1;
-                    }
-                }
+                // Create exactly 64-byte aligned event
+                let data = format!("cache_test_{:0>40}", i); // Pad to consistent size
+                let event = EventUtils::create_pooled_event::<64>(
+                    black_box(data.as_bytes()),
+                    black_box(i as u32)
+                ).unwrap();
 
-                // Slow processing: only process every 3rd event
-                if i % 3 == 0 {
-                    if let Some(event) = xs_reader.next() {
-                        // Simulate slow storage
-                        black_box(&event.data[..event.len as usize]);
-                        events_processed += 1;
-                    }
-                }
-
-                // Check backpressure
-                if xs_reader.is_under_pressure() {
-                    backpressure_triggered += 1;
-                }
+                black_box(writer.add(event));
             }
-
-            black_box((events_emitted, events_processed, backpressure_triggered));
         });
     });
 
@@ -383,17 +382,22 @@ fn bench_realistic_backpressure(c: &mut Criterion) {
 }
 
 criterion_group!(
-    xaero_core_benches,
+    core_benches,
     bench_ffi_to_subject,
-    bench_subject_to_pipeline,
-    bench_pipeline_to_actors,
+    bench_write_only_performance,
+    bench_coordinated_read_performance,
 );
 
 criterion_group!(
-    xaero_scenario_benches,
-    bench_peer_handshake,
-    bench_mixed_workload,
-    bench_realistic_backpressure,
+    lmax_pipeline_benches,
+    bench_multi_pool_performance,
+    bench_realistic_pipeline,
+    bench_backpressure_simulation,
 );
 
-criterion_main!(xaero_core_benches, xaero_scenario_benches);
+criterion_group!(
+    memory_benches,
+    bench_memory_patterns,
+);
+
+criterion_main!(core_benches, lmax_pipeline_benches, memory_benches);
