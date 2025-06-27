@@ -31,6 +31,7 @@ unsafe impl<const TSHIRT_SIZE: usize> Zeroable for PooledEvent<TSHIRT_SIZE> {}
 const MAX_STACK_BYTES: usize = 1_048_576; // 1MB max per ring buffer
 
 #[repr(C, align(64))]
+#[derive(Debug)]
 pub struct RingBuffer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     // Single Writer updates this
     pub published_sequence: UnsafeCell<usize>,
@@ -80,6 +81,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingBuffer<TSHIRT_SIZ
 }
 
 #[repr(C, align(64))]
+#[derive(Debug, Copy, Clone)]
 pub struct Reader<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     pub cursor: usize,
     pub ringbuffer: &'static RingBuffer<TSHIRT_SIZE, RING_CAPACITY>,
@@ -119,6 +121,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Reader<TSHIRT_SIZE, R
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Iterator for Reader<TSHIRT_SIZE, RING_CAPACITY> {
     type Item = PooledEvent<TSHIRT_SIZE>;
 
+    #[allow(clippy::comparison_chain)]
     fn next(&mut self) -> Option<Self::Item> {
         // how far has writer written
         let published_sequence_ptr = self.ringbuffer.published_sequence.get();
@@ -140,6 +143,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Iterator for Reader<T
 }
 
 #[repr(C, align(64))]
+#[derive(Debug)] // we INTENTIONALLY do not allow clone or copy of a writer - Single writer always!
 pub struct Writer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     pub ringbuffer: &'static RingBuffer<TSHIRT_SIZE, RING_CAPACITY>,
 }

@@ -3,4 +3,3 @@ pub mod ring;
 
 pub use pool::*;
 pub use ring::*;
-

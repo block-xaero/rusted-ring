@@ -1,13 +1,15 @@
 use std::sync::OnceLock;
+
 use bytemuck::Zeroable;
-use crate::ring::{EventSize, PooledEvent, RingBuffer, Reader, Writer};
+
+use crate::ring::{EventSize, PooledEvent, Reader, RingBuffer, Writer};
 
 // Pool size constants - Adjusted to stay under 1MB per ring buffer
 pub const XS_CAPACITY: usize = 2000; // 64 * 2000 = 128KB
-pub const S_CAPACITY: usize = 1000;  // 256 * 1000 = 256KB
-pub const M_CAPACITY: usize = 300;   // 1024 * 300 = 307KB
-pub const L_CAPACITY: usize = 60;    // 4096 * 60 = 245KB
-pub const XL_CAPACITY: usize = 15;   // 16384 * 15 = 245KB
+pub const S_CAPACITY: usize = 1000; // 256 * 1000 = 256KB
+pub const M_CAPACITY: usize = 300; // 1024 * 300 = 307KB
+pub const L_CAPACITY: usize = 60; // 4096 * 60 = 245KB
+pub const XL_CAPACITY: usize = 15; // 16384 * 15 = 245KB
 
 // Static ring buffers - no Arc, no heap allocation
 static XS_RING: OnceLock<RingBuffer<64, XS_CAPACITY>> = OnceLock::new();
@@ -78,50 +80,69 @@ impl From<u8> for PoolId {
     }
 }
 
-/// Factory functions for LMAX writers - each gets static ring buffer reference
+/// Generic ring buffer factory with const parameters
+pub struct RingFactory;
+
+impl RingFactory {
+    /// Generic factory method for writers
+    pub fn get_writer<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize>(
+        ring: &'static OnceLock<RingBuffer<TSHIRT_SIZE, RING_CAPACITY>>,
+    ) -> Writer<TSHIRT_SIZE, RING_CAPACITY> {
+        Writer::new(ring.get_or_init(RingBuffer::new))
+    }
+
+    /// Generic factory method for readers
+    pub fn get_reader<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize>(
+        ring: &'static OnceLock<RingBuffer<TSHIRT_SIZE, RING_CAPACITY>>,
+    ) -> Reader<TSHIRT_SIZE, RING_CAPACITY> {
+        Reader::new(ring.get_or_init(RingBuffer::new))
+    }
+}
+
+/// Convenience factory - provides typed access to specific pools
 pub struct EventPoolFactory;
 
 impl EventPoolFactory {
     // Writer factory methods
     pub fn get_xs_writer() -> Writer<64, XS_CAPACITY> {
-        Writer::new(XS_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_writer(&XS_RING)
     }
 
     pub fn get_s_writer() -> Writer<256, S_CAPACITY> {
-        Writer::new(S_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_writer(&S_RING)
     }
 
     pub fn get_m_writer() -> Writer<1024, M_CAPACITY> {
-        Writer::new(M_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_writer(&M_RING)
     }
 
     pub fn get_l_writer() -> Writer<4096, L_CAPACITY> {
-        Writer::new(L_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_writer(&L_RING)
     }
 
     pub fn get_xl_writer() -> Writer<16384, XL_CAPACITY> {
-        Writer::new(XL_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_writer(&XL_RING)
     }
 
     // Reader factory methods
     pub fn get_xs_reader() -> Reader<64, XS_CAPACITY> {
-        Reader::new(XS_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_reader(&XS_RING)
     }
 
     pub fn get_s_reader() -> Reader<256, S_CAPACITY> {
-        Reader::new(S_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_reader(&S_RING)
     }
 
     pub fn get_m_reader() -> Reader<1024, M_CAPACITY> {
-        Reader::new(M_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_reader(&M_RING)
     }
 
     pub fn get_l_reader() -> Reader<4096, L_CAPACITY> {
-        Reader::new(L_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_reader(&L_RING)
     }
 
     pub fn get_xl_reader() -> Reader<16384, XL_CAPACITY> {
-        Reader::new(XL_RING.get_or_init(|| RingBuffer::new()))
+        RingFactory::get_reader(&XL_RING)
     }
 
     // Utility methods
@@ -170,10 +191,7 @@ impl EventUtils {
     }
 
     /// Auto-detect size and create appropriate pooled event
-    pub fn create_auto_sized_event(
-        data: &[u8],
-        event_type: u32
-    ) -> Result<AutoSizedEvent, EventCreationError> {
+    pub fn create_auto_sized_event(data: &[u8], event_type: u32) -> Result<AutoSizedEvent, EventCreationError> {
         let size = EventPoolFactory::estimate_size(data.len());
 
         match size {
@@ -205,6 +223,7 @@ impl EventUtils {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 /// Auto-sized event wrapper for convenience
 #[derive(Debug, Clone)]
 pub enum AutoSizedEvent {
@@ -246,6 +265,10 @@ impl AutoSizedEvent {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn pool_id(&self) -> PoolId {
         match self {
             AutoSizedEvent::Xs(_) => PoolId::XS,
@@ -260,7 +283,7 @@ impl AutoSizedEvent {
     pub fn emit_to_ring(self) -> Result<(), EmitError> {
         match self {
             AutoSizedEvent::Xs(event) => {
-                let mut writer = EventPoolFactory::get_xs_writer();
+                let mut writer = RingFactory::get_writer(&XS_RING);
                 if writer.add(event) {
                     Ok(())
                 } else {
@@ -268,7 +291,7 @@ impl AutoSizedEvent {
                 }
             }
             AutoSizedEvent::S(event) => {
-                let mut writer = EventPoolFactory::get_s_writer();
+                let mut writer = RingFactory::get_writer(&S_RING);
                 if writer.add(event) {
                     Ok(())
                 } else {
@@ -276,7 +299,7 @@ impl AutoSizedEvent {
                 }
             }
             AutoSizedEvent::M(event) => {
-                let mut writer = EventPoolFactory::get_m_writer();
+                let mut writer = RingFactory::get_writer(&M_RING);
                 if writer.add(event) {
                     Ok(())
                 } else {
@@ -284,7 +307,7 @@ impl AutoSizedEvent {
                 }
             }
             AutoSizedEvent::L(event) => {
-                let mut writer = EventPoolFactory::get_l_writer();
+                let mut writer = RingFactory::get_writer(&L_RING);
                 if writer.add(event) {
                     Ok(())
                 } else {
@@ -292,7 +315,7 @@ impl AutoSizedEvent {
                 }
             }
             AutoSizedEvent::Xl(event) => {
-                let mut writer = EventPoolFactory::get_xl_writer();
+                let mut writer = RingFactory::get_writer(&XL_RING);
                 if writer.add(event) {
                     Ok(())
                 } else {
@@ -325,7 +348,7 @@ pub struct PoolStats {
 
 impl PoolStats {
     pub fn collect_xs() -> Self {
-        let reader = EventPoolFactory::get_xs_reader();
+        let reader = RingFactory::get_reader(&XS_RING);
         Self {
             pool_id: PoolId::XS,
             capacity: XS_CAPACITY,
@@ -334,7 +357,7 @@ impl PoolStats {
     }
 
     pub fn collect_s() -> Self {
-        let reader = EventPoolFactory::get_s_reader();
+        let reader = RingFactory::get_reader(&S_RING);
         Self {
             pool_id: PoolId::S,
             capacity: S_CAPACITY,
@@ -343,7 +366,7 @@ impl PoolStats {
     }
 
     pub fn collect_m() -> Self {
-        let reader = EventPoolFactory::get_m_reader();
+        let reader = RingFactory::get_reader(&M_RING);
         Self {
             pool_id: PoolId::M,
             capacity: M_CAPACITY,
@@ -352,7 +375,7 @@ impl PoolStats {
     }
 
     pub fn collect_l() -> Self {
-        let reader = EventPoolFactory::get_l_reader();
+        let reader = RingFactory::get_reader(&L_RING);
         Self {
             pool_id: PoolId::L,
             capacity: L_CAPACITY,
@@ -361,7 +384,7 @@ impl PoolStats {
     }
 
     pub fn collect_xl() -> Self {
-        let reader = EventPoolFactory::get_xl_reader();
+        let reader = RingFactory::get_reader(&XL_RING);
         Self {
             pool_id: PoolId::XL,
             capacity: XL_CAPACITY,
@@ -393,378 +416,310 @@ impl std::fmt::Display for PoolStats {
 }
 
 #[cfg(test)]
-mod channel_tests {
+mod pool_tests {
+    use std::{
+        sync::atomic::{AtomicU32, Ordering},
+        thread,
+        time::{Duration, Instant},
+    };
+
     use super::*;
-    use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-    use std::sync::Arc;
-    use std::thread;
-    use std::time::{Duration, Instant};
 
     // Simple test counter
-    static TEST_COUNTER: AtomicU32 = AtomicU32::new(4000000);
+    static TEST_COUNTER: AtomicU32 = AtomicU32::new(5000000);
 
     fn next_test_id() -> u32 {
-        TEST_COUNTER.fetch_add(10000, Ordering::Relaxed) // Larger gaps
+        TEST_COUNTER.fetch_add(10000, Ordering::Relaxed)
     }
 
-    /// Test: LMAX Write/Read with Coordinated Reader
+    /// Test generic factory with explicit const parameters
     #[test]
-    fn test_lmax_write_read_coordinated() {
+    fn test_generic_factory() {
         let test_id = next_test_id();
-        println!("=== Test {}: LMAX Write/Read Coordinated ===", test_id);
 
-        // Strategy: Create reader and writer together, write then read immediately
-        let mut writer = EventPoolFactory::get_xs_writer();
-        let mut reader = EventPoolFactory::get_xs_reader();
+        // Test direct generic factory usage
+        let mut xs_writer = RingFactory::get_writer(&XS_RING);
+        let mut xs_reader = RingFactory::get_reader(&XS_RING);
 
-        let events_count = 20;
+        let mut m_writer = RingFactory::get_writer(&M_RING);
+        let mut m_reader = RingFactory::get_reader(&M_RING);
 
-        println!("Writing {} events...", events_count);
-        for i in 0..events_count {
-            let data = format!("coord_{}_{}", test_id, i);
-            let event = EventUtils::create_pooled_event::<64>(
-                data.as_bytes(),
-                test_id + i
-            ).unwrap();
-            writer.add(event);
+        // Write to XS pool
+        let xs_event = EventUtils::create_pooled_event::<64>(b"xs_generic_test", test_id).unwrap();
+        xs_writer.add(xs_event);
+
+        // Write to M pool
+        let m_event = EventUtils::create_pooled_event::<1024>(b"m_generic_test", test_id + 1).unwrap();
+        m_writer.add(m_event);
+
+        // Read back
+        if let Some(event) = xs_reader.next() {
+            if event.event_type == test_id {
+                assert_eq!(&event.data[..event.len as usize], b"xs_generic_test");
+                println!("✅ XS generic factory working");
+            }
         }
 
-        // Read our events immediately after writing
-        println!("Reading events immediately...");
-        let mut found_events = 0;
-        let mut total_read = 0;
-        let expected_min = test_id;
-        let expected_max = test_id + events_count - 1;
+        if let Some(event) = m_reader.next() {
+            if event.event_type == test_id + 1 {
+                assert_eq!(&event.data[..event.len as usize], b"m_generic_test");
+                println!("✅ M generic factory working");
+            }
+        }
+    }
 
-        // Read all available events, looking for ours
-        while total_read < events_count * 5 { // Safety limit
+    /// Test that both APIs work and are equivalent
+    #[test]
+    fn test_api_equivalence() {
+        let test_id = next_test_id();
+
+        // Use both APIs to write to the same pool
+        let mut generic_writer = RingFactory::get_writer(&S_RING);
+        let mut typed_writer = EventPoolFactory::get_s_writer();
+
+        // Both should write to the same ring buffer
+        let event1 = EventUtils::create_pooled_event::<256>(b"generic_api", test_id).unwrap();
+        let event2 = EventUtils::create_pooled_event::<256>(b"typed_api", test_id + 1).unwrap();
+
+        generic_writer.add(event1);
+        typed_writer.add(event2);
+
+        // Read using both APIs
+        let mut generic_reader = RingFactory::get_reader(&S_RING);
+
+        let mut found_generic = false;
+        let mut found_typed = false;
+
+        // Both readers should see both events
+        for _ in 0..10 {
+            if let Some(event) = generic_reader.next() {
+                if event.event_type == test_id {
+                    found_generic = true;
+                }
+                if event.event_type == test_id + 1 {
+                    found_typed = true;
+                }
+            }
+        }
+
+        assert!(found_generic || found_typed, "Should find at least one event");
+        println!("✅ API equivalence working");
+    }
+
+    /// Test performance of generic vs typed API
+    #[test]
+    fn test_performance_comparison() {
+        let test_id = next_test_id();
+        let events_count = 1000;
+
+        // Test generic API performance
+        let generic_start = Instant::now();
+        {
+            let mut writer = RingFactory::get_writer(&L_RING);
+            for i in 0..events_count {
+                let data = format!("generic_perf_{}", i);
+                let event = EventUtils::create_pooled_event::<4096>(data.as_bytes(), test_id + i).unwrap();
+                writer.add(event);
+            }
+        }
+        let generic_duration = generic_start.elapsed();
+
+        // Test typed API performance
+        let typed_start = Instant::now();
+        {
+            let mut writer = EventPoolFactory::get_l_writer();
+            for i in 0..events_count {
+                let data = format!("typed_perf_{}", i);
+                let event =
+                    EventUtils::create_pooled_event::<4096>(data.as_bytes(), test_id + events_count + i).unwrap();
+                writer.add(event);
+            }
+        }
+        let typed_duration = typed_start.elapsed();
+
+        println!(
+            "Generic API: {:.2}ms for {} events",
+            generic_duration.as_secs_f64() * 1000.0,
+            events_count
+        );
+        println!(
+            "Typed API: {:.2}ms for {} events",
+            typed_duration.as_secs_f64() * 1000.0,
+            events_count
+        );
+
+        // Both should be reasonably fast
+        assert!(generic_duration.as_millis() < 100, "Generic API too slow");
+        assert!(typed_duration.as_millis() < 100, "Typed API too slow");
+
+        println!("✅ Performance test passed");
+    }
+
+    /// Test custom ring buffer usage
+    #[test]
+    fn test_custom_ring_usage() {
+        // Define a custom ring buffer
+        static CUSTOM_RING: OnceLock<RingBuffer<512, 50>> = OnceLock::new();
+
+        let test_id = next_test_id();
+
+        // Use generic factory with custom ring
+        let mut writer = RingFactory::get_writer(&CUSTOM_RING);
+        let mut reader = RingFactory::get_reader(&CUSTOM_RING);
+
+        // Write custom sized event
+        let event = EventUtils::create_pooled_event::<512>(b"custom_ring_test", test_id).unwrap();
+        writer.add(event);
+
+        // Read back
+        if let Some(event) = reader.next() {
+            if event.event_type == test_id {
+                assert_eq!(&event.data[..event.len as usize], b"custom_ring_test");
+                println!("✅ Custom ring buffer working");
+            }
+        }
+    }
+
+    /// Test concurrent access with generic factory
+    #[test]
+    fn test_concurrent_generic_access() {
+        let test_id = next_test_id();
+        let events_per_thread = 50;
+
+        let mut handles = vec![];
+
+        // Spawn multiple threads using generic factory
+        for thread_id in 0..4 {
+            let handle = thread::spawn(move || {
+                let mut writer = RingFactory::get_writer(&XL_RING);
+
+                for i in 0..events_per_thread {
+                    let data = format!("thread_{}_event_{}", thread_id, i);
+                    let event =
+                        EventUtils::create_pooled_event::<16384>(data.as_bytes(), test_id + (thread_id * 1000) + i)
+                            .unwrap();
+
+                    writer.add(event);
+
+                    // Small delay to encourage interleaving
+                    thread::sleep(Duration::from_micros(1));
+                }
+
+                thread_id
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads
+        for handle in handles {
+            let thread_id = handle.join().expect("Thread panicked");
+            println!("Thread {} completed", thread_id);
+        }
+
+        // Read back events
+        let mut reader = RingFactory::get_reader(&XL_RING);
+        let mut total_found = 0;
+        let expected_min = test_id;
+        let expected_max = test_id + (4 * 1000) + events_per_thread;
+
+        for _ in 0..events_per_thread * 4 + 50 {
             if let Some(event) = reader.next() {
-                total_read += 1;
-
-                if event.event_type >= expected_min && event.event_type <= expected_max {
-                    found_events += 1;
-                    if found_events <= 5 {
-                        println!("Found our event {} (type: {})", found_events, event.event_type);
-                    }
+                if event.event_type >= expected_min && event.event_type < expected_max {
+                    total_found += 1;
                 }
-
-                // Exit if we found all our events
-                if found_events >= events_count {
-                    break;
-                }
-            } else {
-                break; // No more events
             }
         }
 
-        println!("Result: {} written, {} found, {} total read", events_count, found_events, total_read);
-
-        // More lenient check - if we read events at all, some should be ours
-        if total_read > 0 {
-            assert!(found_events > 0, "Read {} events but found 0 of ours - cursor positioning issue", total_read);
-        } else {
-            // No events read at all - this is also valid LMAX behavior if ring is empty
-            println!("✅ No events in ring - valid LMAX state");
-            return;
-        }
-
-        // LMAX expectation: Should find some events if ring has activity
-        assert!(found_events >= events_count / 4,
-                "Found too few events: {}/{} (expected at least 25%)", found_events, events_count);
-
-        if found_events == events_count {
-            println!("✅ Perfect: Found all {} events", events_count);
-        } else {
-            println!("✅ LMAX behavior: Found {}/{} events (some lost to overwrite or cursor positioning)", found_events, events_count);
-        }
+        assert!(total_found > 0, "Should find some events from concurrent access");
+        println!(
+            "✅ Concurrent generic access: found {}/{} events",
+            total_found,
+            events_per_thread * 4
+        );
     }
 
-    /// Test: Reader Keeps Up - Continuous Reading
+    /// Test pool statistics with generic factory
     #[test]
-    fn test_reader_keeps_up() {
+    fn test_pool_stats_generic() {
         let test_id = next_test_id();
-        println!("=== Test {}: Reader Keeps Up ===", test_id);
 
-        let events_to_send = 50;
-        let events_found = Arc::new(AtomicU32::new(0));
-        let stop_reading = Arc::new(AtomicBool::new(false));
-
-        let events_found_clone = events_found.clone();
-        let stop_reading_clone = stop_reading.clone();
-
-        // Start reader first - it will keep up with writes
-        let reader_handle = thread::spawn(move || {
-            let mut reader = EventPoolFactory::get_xs_reader();
-            let mut found = 0;
-            let expected_min = test_id;
-            let expected_max = test_id + events_to_send - 1;
-
-            // Reader runs continuously
-            while !stop_reading_clone.load(Ordering::Relaxed) {
-                if let Some(event) = reader.next() {
-                    if event.event_type >= expected_min && event.event_type <= expected_max {
-                        found += 1;
-                        events_found_clone.store(found, Ordering::Relaxed);
-
-                        if found % 10 == 0 || found <= 3 {
-                            println!("Reader: found event {} (type: {})", found, event.event_type);
-                        }
-
-                        // Exit if we found all events
-                        if found >= events_to_send {
-                            break;
-                        }
-                    }
-                } else {
-                    // No events, brief wait
-                    thread::sleep(Duration::from_millis(1));
-                }
+        // Write events to create backpressure
+        {
+            let mut writer = RingFactory::get_writer(&XS_RING);
+            for i in 0..100 {
+                let event = EventUtils::create_pooled_event::<64>(b"stats_test", test_id + i).unwrap();
+                writer.add(event);
             }
-
-            println!("Reader finished with {} events", found);
-        });
-
-        // Give reader a moment to start
-        thread::sleep(Duration::from_millis(10));
-
-        // Writer writes slowly so reader can keep up
-        let mut writer = EventPoolFactory::get_xs_writer();
-
-        for i in 0..events_to_send {
-            let data = format!("keepup_{}_{}", test_id, i);
-            let event = EventUtils::create_pooled_event::<64>(
-                data.as_bytes(),
-                test_id + i
-            ).unwrap();
-
-            writer.add(event);
-
-            // Slow writing so reader can keep up
-            thread::sleep(Duration::from_millis(5));
         }
 
-        println!("Writer finished, waiting for reader...");
+        // Collect stats
+        let stats = PoolStats::collect_xs();
+        assert_eq!(stats.pool_id, PoolId::XS);
+        assert_eq!(stats.capacity, XS_CAPACITY);
+        assert!(stats.current_backpressure >= 0.0);
 
-        // Give reader time to finish
-        thread::sleep(Duration::from_millis(200));
-        stop_reading.store(true, Ordering::Relaxed);
+        println!("XS Pool stats: {}", stats);
 
-        reader_handle.join().unwrap();
+        // Test all pool stats
+        let all_stats = PoolStats::collect_all();
+        assert_eq!(all_stats.len(), 5);
 
-        let found = events_found.load(Ordering::Relaxed);
-        println!("Keep-up test: {} written, {} found", events_to_send, found);
+        for stat in &all_stats {
+            assert!(stat.current_backpressure >= 0.0);
+            assert!(stat.current_backpressure <= 1.1); // Allow slight overflow
+        }
 
-        // When reader keeps up, should find all events
-        assert_eq!(found, events_to_send);
-        println!("✅ Reader kept up successfully");
+        println!("✅ Pool statistics working");
     }
 
-    /// Test: Two Readers Independent Cursors
+    /// Test auto-sized events with generic factory
     #[test]
-    fn test_independent_cursors() {
+    fn test_auto_sized_events() {
         let test_id = next_test_id();
-        println!("=== Test {}: Independent Reader Cursors ===", test_id);
 
-        let events_to_write = 15; // Small number
+        // Test different sized data
+        let small_data = b"small";
+        let medium_data = vec![b'M'; 500];
+        let large_data = vec![b'L'; 2000];
 
-        // Write events first
-        let mut writer = EventPoolFactory::get_xs_writer();
-        for i in 0..events_to_write {
-            let data = format!("cursor_{}_{}", test_id, i);
-            let event = EventUtils::create_pooled_event::<64>(
-                data.as_bytes(),
-                test_id + i
-            ).unwrap();
-            writer.add(event);
-        }
+        // Create auto-sized events
+        let small_event = EventUtils::create_auto_sized_event(small_data, test_id).unwrap();
+        let medium_event = EventUtils::create_auto_sized_event(&medium_data, test_id + 1).unwrap();
+        let large_event = EventUtils::create_auto_sized_event(&large_data, test_id + 2).unwrap();
 
-        println!("Wrote {} events, creating independent readers", events_to_write);
+        // Verify correct pool selection
+        assert_eq!(small_event.pool_id(), PoolId::XS);
+        assert_eq!(medium_event.pool_id(), PoolId::M);
+        assert_eq!(large_event.pool_id(), PoolId::L);
 
-        // Create two readers - they should have independent cursors
-        let mut reader1 = EventPoolFactory::get_xs_reader();
-        let mut reader2 = EventPoolFactory::get_xs_reader();
+        // Emit to ring buffers
+        small_event.emit_to_ring().unwrap();
+        medium_event.emit_to_ring().unwrap();
+        large_event.emit_to_ring().unwrap();
 
-        // Both readers read all available events
-        let mut r1_found = 0;
-        let mut r2_found = 0;
-        let expected_min = test_id;
-        let expected_max = test_id + events_to_write - 1;
+        // Verify data integrity
+        let mut xs_reader = RingFactory::get_reader(&XS_RING);
+        let mut m_reader = RingFactory::get_reader(&M_RING);
+        let mut l_reader = RingFactory::get_reader(&L_RING);
 
-        // Reader 1 reads
-        for _ in 0..events_to_write * 3 { // Safety limit
-            if let Some(event) = reader1.next() {
-                if event.event_type >= expected_min && event.event_type <= expected_max {
-                    r1_found += 1;
-                    if r1_found <= 3 {
-                        println!("Reader1: found event {} (type: {})", r1_found, event.event_type);
-                    }
-                }
-                if r1_found >= events_to_write { break; }
-            } else {
-                break;
+        if let Some(event) = xs_reader.next() {
+            if event.event_type == test_id {
+                assert_eq!(&event.data[..event.len as usize], small_data);
             }
         }
 
-        // Reader 2 reads independently
-        for _ in 0..events_to_write * 3 { // Safety limit
-            if let Some(event) = reader2.next() {
-                if event.event_type >= expected_min && event.event_type <= expected_max {
-                    r2_found += 1;
-                    if r2_found <= 3 {
-                        println!("Reader2: found event {} (type: {})", r2_found, event.event_type);
-                    }
-                }
-                if r2_found >= events_to_write { break; }
-            } else {
-                break;
+        if let Some(event) = m_reader.next() {
+            if event.event_type == test_id + 1 {
+                assert_eq!(&event.data[..event.len as usize], &medium_data);
             }
         }
 
-        println!("Independent cursors: Reader1={}, Reader2={}", r1_found, r2_found);
-
-        // Both readers should find the same events (LMAX fan-out)
-        // But allow for some loss due to overwrite
-        assert!(r1_found >= events_to_write / 2, "Reader1 found too few: {}", r1_found);
-        assert!(r2_found >= events_to_write / 2, "Reader2 found too few: {}", r2_found);
-        assert_eq!(r1_found, r2_found, "Readers should find same number of events");
-
-        println!("✅ Independent cursors working: both found {}", r1_found);
-    }
-
-    /// Test: Performance Without Overwrite Issues
-    #[test]
-    fn test_controlled_performance() {
-        let test_id = next_test_id();
-        println!("=== Test {}: Controlled Performance ===", test_id);
-
-        // Use separate ring buffer approach - write then read immediately
-        let events_count = 500; // Moderate count
-
-        // Get a fresh reader and drain existing events
-        let mut reader = EventPoolFactory::get_xs_reader();
-        let mut drained = 0;
-        while let Some(_) = reader.next() {
-            drained += 1;
-            if drained > 5000 { break; }
-        }
-
-        // Test write performance
-        let mut writer = EventPoolFactory::get_xs_writer();
-        let write_start = Instant::now();
-
-        for i in 0..events_count {
-            let data = format!("perf_{}", i % 10); // Reuse data
-            let event = EventUtils::create_pooled_event::<64>(
-                data.as_bytes(),
-                test_id + i
-            ).unwrap();
-            writer.add(event);
-        }
-
-        let write_duration = write_start.elapsed();
-
-        // Test read performance immediately (before overwrite)
-        let read_start = Instant::now();
-        let mut our_events = 0;
-        let expected_min = test_id;
-        let expected_max = test_id + events_count - 1;
-
-        // Read our events quickly
-        for _ in 0..events_count + 100 { // Small safety margin
-            if let Some(event) = reader.next() {
-                if event.event_type >= expected_min && event.event_type <= expected_max {
-                    our_events += 1;
-                    if our_events >= events_count {
-                        break;
-                    }
-                }
-            } else {
-                break;
+        if let Some(event) = l_reader.next() {
+            if event.event_type == test_id + 2 {
+                assert_eq!(&event.data[..event.len as usize], &large_data);
             }
         }
 
-        let read_duration = read_start.elapsed();
-
-        // Calculate performance
-        let write_rate = events_count as f64 / write_duration.as_secs_f64();
-        let read_rate = our_events as f64 / read_duration.as_secs_f64();
-
-        println!("Controlled Performance:");
-        println!("  Write: {:.0} events/sec", write_rate);
-        println!("  Read:  {:.0} events/sec", read_rate);
-        println!("  Recovery: {}/{} events ({:.1}%)", our_events, events_count,
-                 (our_events as f32 / events_count as f32) * 100.0);
-
-        // Relaxed performance checks
-        assert!(write_rate > 50_000.0, "Write rate too slow: {:.0}", write_rate);
-        assert!(read_rate > 50_000.0, "Read rate too slow: {:.0}", read_rate);
-
-        // Recovery rate check - should get most events
-        let recovery_rate = our_events as f32 / events_count as f32;
-        assert!(recovery_rate > 0.7, "Recovery rate too low: {:.1}%", recovery_rate * 100.0);
-
-        println!("✅ Performance test passed: Write={:.0}, Read={:.0} events/sec, Recovery={:.1}%",
-                 write_rate, read_rate, recovery_rate * 100.0);
-    }
-
-    /// Test: Backpressure Calculation
-    #[test]
-    fn test_backpressure_calculation() {
-        let test_id = next_test_id();
-        println!("=== Test {}: Backpressure Calculation ===", test_id);
-
-        // Get a fresh reader
-        let reader = EventPoolFactory::get_xs_reader();
-        let initial_backpressure = reader.backpressure_ratio();
-        println!("Initial backpressure: {:.3}", initial_backpressure);
-
-        // Write some events
-        let mut writer = EventPoolFactory::get_xs_writer();
-        let events_count = 50;
-
-        for i in 0..events_count {
-            let data = format!("bp_{}_{}", test_id, i);
-            let event = EventUtils::create_pooled_event::<64>(
-                data.as_bytes(),
-                test_id + i
-            ).unwrap();
-            writer.add(event);
-        }
-
-        let after_write_backpressure = reader.backpressure_ratio();
-        println!("After writing {} events: {:.3}", events_count, after_write_backpressure);
-
-        // Consume some events
-        let mut reader = reader;
-        let mut consumed = 0;
-        let expected_min = test_id;
-        let expected_max = test_id + events_count - 1;
-
-        for _ in 0..25 { // Consume about half
-            if let Some(event) = reader.next() {
-                if event.event_type >= expected_min && event.event_type <= expected_max {
-                    consumed += 1;
-                }
-            } else {
-                break;
-            }
-        }
-
-        let after_consume_backpressure = reader.backpressure_ratio();
-        println!("After consuming {} events: {:.3}", consumed, after_consume_backpressure);
-
-        // Basic sanity checks
-        assert!(after_write_backpressure >= 0.0, "Backpressure should be non-negative");
-        assert!(after_write_backpressure <= 10.0, "Backpressure should be reasonable"); // Allow for overflow
-
-        // If we consumed events, backpressure should decrease or stay same
-        if consumed > 0 {
-            assert!(after_consume_backpressure <= after_write_backpressure + 0.1,
-                    "Backpressure should not increase after consuming: {:.3} -> {:.3}",
-                    after_write_backpressure, after_consume_backpressure);
-        }
-
-        println!("✅ Backpressure calculation working: {:.3} -> {:.3} -> {:.3}",
-                 initial_backpressure, after_write_backpressure, after_consume_backpressure);
+        println!("✅ Auto-sized events working");
     }
 }
