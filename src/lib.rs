@@ -12,7 +12,7 @@ pub use ring::*;
 /// Source emits events (See `PooledEvent<TSHIRT_SIZE>` for more details).
 #[derive(Debug)]
 pub struct RingSource<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
-    writer: Writer<TSHIRT_SIZE, RING_CAPACITY>,
+    pub writer: Writer<TSHIRT_SIZE, RING_CAPACITY>,
 }
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSource<TSHIRT_SIZE, RING_CAPACITY> {
     pub fn new(out_buffer: &'static RingBuffer<TSHIRT_SIZE, RING_CAPACITY>) -> Self {
@@ -27,7 +27,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSource<TSHIRT_SIZ
 /// Reader then used by receiving actor to process messages.
 #[derive(Debug, Clone)]
 pub struct RingSink<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
-    reader: Reader<TSHIRT_SIZE, RING_CAPACITY>,
+    pub  reader: Reader<TSHIRT_SIZE, RING_CAPACITY>,
 }
 
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSink<TSHIRT_SIZE, RING_CAPACITY> {
@@ -48,6 +48,6 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSink<TSHIRT_SIZE,
 /// Like wise Writer is used in a manner similar.
 #[derive(Debug)]
 pub struct RingPipe<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
-    source: RingSource<TSHIRT_SIZE, RING_CAPACITY>,
-    sink: RingSink<TSHIRT_SIZE, RING_CAPACITY>,
+    pub source: RingSource<TSHIRT_SIZE, RING_CAPACITY>,
+    pub sink: RingSink<TSHIRT_SIZE, RING_CAPACITY>,
 }
