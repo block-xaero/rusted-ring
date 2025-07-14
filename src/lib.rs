@@ -27,7 +27,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSource<TSHIRT_SIZ
 /// Reader then used by receiving actor to process messages.
 #[derive(Debug, Clone)]
 pub struct RingSink<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
-    pub  reader: Reader<TSHIRT_SIZE, RING_CAPACITY>,
+    pub reader: Reader<TSHIRT_SIZE, RING_CAPACITY>,
 }
 
 impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSink<TSHIRT_SIZE, RING_CAPACITY> {
@@ -50,4 +50,16 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingSink<TSHIRT_SIZE,
 pub struct RingPipe<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> {
     pub source: RingSource<TSHIRT_SIZE, RING_CAPACITY>,
     pub sink: RingSink<TSHIRT_SIZE, RING_CAPACITY>,
+}
+
+impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> RingPipe<TSHIRT_SIZE, RING_CAPACITY> {
+    pub fn new(
+        in_buffer: &'static RingBuffer<TSHIRT_SIZE, RING_CAPACITY>,
+        out_buffer: &'static RingBuffer<TSHIRT_SIZE, RING_CAPACITY>,
+    ) -> Self {
+        RingPipe {
+            source: RingSource::new(out_buffer),
+            sink: RingSink::new(in_buffer),
+        }
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "rusted-ring"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 description = "LMAX inspired Lock-free ring buffers with cache-aligned memory pools for high-performance event systems"
 license = "MPL-2.0"
