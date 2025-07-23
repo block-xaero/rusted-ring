@@ -153,7 +153,7 @@ impl<const TSHIRT_SIZE: usize, const RING_CAPACITY: usize> Writer<TSHIRT_SIZE, R
         Self { ringbuffer }
     }
 
-    pub fn add(&mut self, e: PooledEvent<TSHIRT_SIZE>) -> bool {
+    pub fn add(&self, e: PooledEvent<TSHIRT_SIZE>) -> bool {
         let published_sequence_ptr = self.ringbuffer.published_sequence.get();
         let current_sequence = unsafe { *published_sequence_ptr };
         let slot = current_sequence % RING_CAPACITY;

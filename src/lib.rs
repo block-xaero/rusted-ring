@@ -9,11 +9,11 @@ pub const M_CAPACITY: usize = 300; // 1024 * 300 = 307KB
 pub const L_CAPACITY: usize = 60; // 4096 * 60 = 245KB
 pub const XL_CAPACITY: usize = 15; // 16384 * 15 = 245KB
 
-pub const XS_TSHIRT_SIZE : usize = 64;
-pub const S_TSHIRT_SIZE : usize = 256;
-pub const M_TSHIRT_SIZE : usize = 1024;
-pub const L_TSHIRT_SIZE : usize = 4096;
-pub const XL_TSHIRT_SIZE : usize = 16384;
+pub const XS_TSHIRT_SIZE: usize = 64;
+pub const S_TSHIRT_SIZE: usize = 256;
+pub const M_TSHIRT_SIZE: usize = 1024;
+pub const L_TSHIRT_SIZE: usize = 4096;
+pub const XL_TSHIRT_SIZE: usize = 16384;
 
 /// A Ring Source is the emitter bound to ring buffer
 /// Essentially has a writer that is used by underlying `user` - lets say an actor
